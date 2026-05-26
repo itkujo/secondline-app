@@ -56,3 +56,15 @@ checks, or `SECONDLINE_PUBLIC_URL`/`MEDIA_PUBLIC_URL` env vars, or
 - Ships with Node — one fewer thing to break across Alpine versions
 - API is a strict subset of better-sqlite3 (prepared statements + `run`/`get`/`all`/`iterate`)
 - If we ever need pragmas or features `node:sqlite` lacks, swapping back is a small DB-layer edit
+
+## Why `node --env-file-if-exists=.env` for dev
+
+`src/lib/env.ts` reads `process.env.*` directly. Astro/Vite loads `.env` into
+`import.meta.env` but does NOT populate `process.env` for SSR server code, so
+without `--env-file` admin login (and every other server-side env consumer)
+would silently see empty strings. We use Node's built-in `--env-file-if-exists`
+flag (stable since Node 20.12 / 22.5) in the `dev` and `dev:lan` scripts to
+load `.env` into `process.env` at startup. No `dotenv` dep needed.
+
+Production: Coolify injects env vars into the container's `process.env`
+directly, so no `--env-file` is needed (and no `.env` file exists in prod).

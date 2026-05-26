@@ -5,8 +5,8 @@
   "type": "module",
   "packageManager": "pnpm@10.33.2",
   "scripts": {
-    "dev": "astro dev",
-    "dev:lan": "astro dev --host 0.0.0.0",
+    "dev": "node --env-file-if-exists=.env ./node_modules/astro/astro.js dev",
+    "dev:lan": "node --env-file-if-exists=.env ./node_modules/astro/astro.js dev --host 0.0.0.0",
     "build": "astro build",
     "preview": "astro preview",
     "start": "node ./dist/server/entry.mjs",
