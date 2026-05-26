@@ -1,0 +1,74 @@
+---
+/**
+ * Host gallery.
+ *
+ * Calm, dark, simple. Grid of thumbnails, click for lightbox. CTAs for
+ * ZIP download and PicTime prints. Used post-event by the host (and
+ * sharable with their guests by them).
+ */
+import GalleryIsland from '@/components/secondline/GalleryIsland';
+import { getEventBySlug } from '@/lib/secondline/events';
+import { listAssetsForEvent } from '@/lib/secondline/assets';
+import { isValidSlugShape } from '@/lib/secondline/slugs';
+import type { PublicAsset, AssetRow } from '@/lib/secondline/types';
+
+export const prerender = false;
+
+const slug = Astro.params.slug ?? '';
+if (!isValidSlugShape(slug)) return Astro.redirect('/404');
+const event = getEventBySlug(slug);
+if (!event) return Astro.redirect('/404');
+if (event.status === 'expired') {
+  if (event.pictime_gallery_url) return Astro.redirect(event.pictime_gallery_url);
+  return Astro.redirect('/404');
+}
+
+const rows = listAssetsForEvent(event.id);
+const initialAssets: PublicAsset[] = rows.map((r: AssetRow) => ({
+  id: r.id,
+  src: `/m/${slug}/${r.id}`,
+  thumb: r.thumb_storage_key ? `/m/${slug}/${r.id}_thumb` : `/m/${slug}/${r.id}`,
+  mime_type: r.mime_type,
+  width: r.width, height: r.height, duration_ms: r.duration_ms,
+  uploader_name: r.uploader_name, uploaded_at: r.uploaded_at,
+}));
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Gallery · Second Line</title>
+    <style>
+      :root { color-scheme: dark; }
+      html, body { margin: 0; padding: 0; background: #050505; color: #f8f4ea; font-family: system-ui, sans-serif; }
+      .wrap { max-width: 1200px; margin: 0 auto; padding: 32px 20px 96px; }
+      h1 { font-size: 28px; margin: 0 0 6px; }
+      p.lead { color: #b8b2a5; margin: 0 0 32px; }
+      .cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 28px; }
+      a.cta {
+        display: inline-block; padding: 12px 22px; border-radius: 999px; font-size: 14px; font-weight: 600;
+        text-decoration: none; border: 1px solid #d4af37; background: #d4af37; color: #050505;
+      }
+      a.cta.secondary { background: transparent; color: #d4af37; }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Your event gallery</h1>
+      <p class="lead">All the photos and videos guests shared during the event.</p>
+
+      <div class="cta-row">
+        <a class="cta" href={`/api/events/${slug}/zip`} download>Download all as ZIP</a>
+        {event.pictime_gallery_url && (
+          <a class="cta secondary" href={event.pictime_gallery_url} target="_blank" rel="noopener">
+            Buy prints from this event →
+          </a>
+        )}
+      </div>
+
+      <GalleryIsland client:load slug={slug} initialAssets={initialAssets} />
+    </main>
+  </body>
+</html>
