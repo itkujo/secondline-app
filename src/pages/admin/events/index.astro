@@ -1,0 +1,89 @@
+---
+/**
+ * Admin: Second Line events list.
+ * Read-only table; click a row to open the detail page (Task 30).
+ */
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import { getDb } from '@/lib/db';
+
+export const prerender = false;
+
+const rows = getDb().prepare(`
+  SELECT e.id, e.slug, e.storage_backend_id, e.status, e.expires_at, e.first_upload_at, e.created_at,
+         e.pictime_gallery_url,
+         e.host_first_name, e.host_last_name, e.host_email, e.event_date,
+         (SELECT COUNT(*) FROM assets a WHERE a.event_id = e.id AND a.deleted_at IS NULL) AS asset_count
+  FROM events e
+  ORDER BY e.created_at DESC
+  LIMIT 500
+`).all() as Array<{
+  id: number; slug: string; storage_backend_id: string; status: string;
+  expires_at: string | null; first_upload_at: string | null; created_at: string;
+  pictime_gallery_url: string | null;
+  host_first_name: string; host_last_name: string;
+  host_email: string; event_date: string; asset_count: number;
+}>;
+---
+<AdminLayout section="events" title="Events">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
+    <div>
+      <h1 style="margin:0 0 4px;">Events</h1>
+      <p style="color:#b8b2a5;margin:0;">Second Line walls and galleries.</p>
+    </div>
+    <a href="/admin/events/new" class="primary-btn">+ New event</a>
+  </div>
+
+  <div class="table-wrap">
+    <table class="rows">
+      <thead>
+        <tr>
+          <th>Created</th>
+          <th>Host</th>
+          <th>Event date</th>
+          <th>Slug</th>
+          <th>Backend</th>
+          <th>Assets</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(r => (
+          <tr>
+            <td>{r.created_at.slice(0,10)}</td>
+            <td>{r.host_first_name} {r.host_last_name}</td>
+            <td>{r.event_date}</td>
+            <td><code>{r.slug}</code></td>
+            <td>{r.storage_backend_id}</td>
+            <td>{r.asset_count}</td>
+            <td><span class={`status-pill is-${r.status}`}>{r.status}</span></td>
+            <td><a href={`/admin/events/${r.id}`} class="chip">Open</a></td>
+          </tr>
+        ))}
+        {rows.length === 0 && (
+          <tr><td colspan="8" class="empty">No events yet. <a href="/admin/events/new" style="color:#d4af37;">Create the first one</a>.</td></tr>
+        )}
+      </tbody>
+    </table>
+  </div>
+
+  <style>
+    .primary-btn { display: inline-block; background: #d4af37; color: #050505; text-decoration: none;
+      padding: 9px 18px; border-radius: 999px; font-weight: 600; font-size: 13px; }
+    .table-wrap { overflow-x: auto; border: 1px solid #1a1a1a; border-radius: 8px; }
+    table.rows { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.rows th { text-align: left; background: rgba(212,175,55,0.06); color: #d4af37;
+      font-weight: 600; padding: 10px 12px; border-bottom: 1px solid #1f1f1f; font-size: 12px;
+      letter-spacing: 0.04em; text-transform: uppercase; }
+    table.rows td { padding: 10px 12px; border-bottom: 1px solid #131313; color: #d8d2c2; }
+    table.rows tr:hover td { background: rgba(212,175,55,0.04); }
+    .status-pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px;
+      letter-spacing: 0.06em; text-transform: uppercase; }
+    .status-pill.is-active { background: rgba(70,160,90,0.12); color: #6ec089; border: 1px solid rgba(70,160,90,0.3); }
+    .status-pill.is-expired { background: rgba(160,80,80,0.12); color: #d08989; border: 1px solid rgba(160,80,80,0.3); }
+    .chip { display: inline-block; padding: 4px 10px; border-radius: 999px; background: rgba(212,175,55,0.08);
+      color: #d4af37; text-decoration: none; font-size: 12px; border: 1px solid rgba(212,175,55,0.3); }
+    .chip:hover { background: rgba(212,175,55,0.16); }
+    .empty { padding: 32px; text-align: center; color: #888; }
+  </style>
+</AdminLayout>
