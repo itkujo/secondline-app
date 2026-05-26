@@ -14,7 +14,7 @@ repo. The first work-task is Task 1 (schema bootstrap).
 
 **Architecture:** Four layers inside the standalone app. (1) A storage backend registry (`src/lib/secondline/storage/`) that abstracts over any S3-compatible endpoint; v1 ships with `wasabi` registered and code-ready for `nas-home`. (2) Domain logic in `src/lib/secondline/` (events, assets, slugs, retention, ZIPs, email). (3) Single-password admin auth + middleware in `src/lib/auth.ts` and `src/middleware.ts`. (4) Five public route surfaces — guest upload `/u/<slug>`, wall `/w/<slug>`, gallery `/g/<slug>`, admin under `/admin/events/`, plus a media proxy at `/m/<slug>/<asset>` bound to `media.smile-nola.com` via Coolify. Realtime via SSE; resilience via a tiny service worker upload queue (single-shot uploads, retried in the background — no tus, no multipart). All schema lives in `src/lib/db.ts` via an idempotent `bootstrapSchema` migration.
 
-**Tech stack:** TypeScript (strict, `verbatimModuleSyntax`), Astro 5 SSR with `@astrojs/node` standalone adapter, React 18 islands, `node:sqlite` (built-in, Node 22.5+), `sharp` with HEIC enabled, `@aws-sdk/client-s3` v3, `qrcode`, `archiver`, `resend`, `zod`, `vitest`. No native build step. No tus. No node-cron.
+**Tech stack:** TypeScript (strict, `verbatimModuleSyntax`), Astro 5 SSR with `@astrojs/node` standalone adapter, React 18 islands, `node:sqlite` (built-in, Node 22.5+), `sharp` for JPEG/PNG/WebP processing, `heic2any` (client-side, lazy-loaded) for browser HEIC→JPEG conversion, `@aws-sdk/client-s3` v3, `qrcode`, `archiver`, `resend`, `zod`, `vitest`. No native build step. No tus. No node-cron. No server-side HEIC dependency.
 
 ---
 
@@ -34,7 +34,7 @@ repo. The first work-task is Task 1 (schema bootstrap).
 | Animation | Pure CSS transitions + Web Animations API, compositor-only | Spec §5.2. No animation library. |
 | Media public URL | `media.smile-nola.com/m/<slug>/<asset-id>` → Astro SSR route that validates and streams from the right backend | Spec §7.6. SSR proxy gives us access control. |
 | Access control | Slug-gated (8-char opaque IDs); proxy validates asset belongs to slug | Spec §7.6. Matches Kululu/Memtly. |
-| HEIC | Server-side conversion to JPEG via sharp + libheif | Spec §10 risk #2 |
+| HEIC | Client-side conversion to JPEG via `heic2any` (lazy-loaded WASM), then standard JPEG upload. Server only sees JPEGs. | sharp's npm prebuild lacks libde265 (HEVC decoder); recompiling sharp or shelling to ffmpeg in Docker is heavier than browser-side conversion. Spec §10 risk #2 resolved via client-side. |
 | Retention | 180 days from event_date; nightly Coolify cron → bearer-gated `POST /api/cron/cleanup` | Spec §7.8. No node-cron. |
 | Host email | Resend, via fresh `src/lib/email.ts` wrapper | Built in this repo from day one |
 | QR codes | Server-side rendered SVG via `qrcode` package | Render in admin event page |
@@ -63,7 +63,7 @@ repo. The first work-task is Task 1 (schema bootstrap).
 | `src/lib/secondline/assets.ts` | DB layer: `recordAsset`, `listAssetsForEvent`, `listAssetsSince`, `getAsset`, `softDeleteAsset`, `countAssetsForEvent`, `totalBytesForEvent`, `listAllAssetsForPurge` |
 | `src/lib/secondline/storage/backends.ts` | Backend registry loader (reads `secondline-backends.json`), `getBackend(id)`, `listBackends()`, `resetBackendsCache` |
 | `src/lib/secondline/storage/s3.ts` | Thin AWS SDK wrapper. `putObject`, `getObjectStream`, `headObject`, `deleteObject`, `listObjectKeys` |
-| `src/lib/secondline/media-processing.ts` | sharp pipeline: HEIC→JPEG, EXIF rotate, dimension extraction, thumbs |
+| `src/lib/secondline/media-processing.ts` | sharp pipeline: EXIF rotate, dimension extraction, thumbs. JPEG/PNG/WebP only — HEIC is converted client-side before upload. |
 | `src/lib/secondline/retention.ts` | Pure helpers + orchestrators: `isExpired`, `daysUntilExpiry`, `runRetentionSweep`, `sendExpiryReminders` |
 | `src/lib/secondline/sse.ts` | In-process per-event subscriber registry. `subscribe(eventId, send)`, `broadcast(eventId, msg)` |
 | `src/lib/secondline/qr.ts` | SVG QR code generation |
@@ -111,64 +111,46 @@ repo. The first work-task is Task 1 (schema bootstrap).
 
 ---
 
-## Task 1: Verify environment, dependencies, and HEIC support
+## Task 1: Verify environment and dependencies (HEIC is browser-side)
 
 **Files:**
-- Read-only: `package.json`, `.env.example`, `Dockerfile` (if present)
-- Modify (only if HEIC verification fails): `Dockerfile`
+- Read-only: `package.json`, `.env.example`
 
-The repo is already bootstrapped with every runtime dependency. This task confirms the working environment (Node 22.5+, libheif support in sharp, env-var template) before any feature work starts.
+The repo is already bootstrapped with every server-side runtime dependency. This task confirms Node 22.5+, a clean install, the env-var template, and creates a local `.env` for dev. HEIC handling is browser-side (lazy-loaded `heic2any`); no server-side libheif/libde265 requirement. The `heic2any` dependency is added in Task 21 (the upload island), not here, because it's a browser-only dep.
 
 - [ ] **Step 1: Verify Node version**
 
 ```sh
 node --version
 ```
-Expected: `v22.5.0` or higher. If lower, install Node 22.5+ via `nvm install 22` (the `node:sqlite` module requires this).
+Expected: `v22.5.0` or higher. If lower, install Node 22.5+ via `nvm install 22` (the `node:sqlite` module requires this). The dev host can be on a higher major (e.g. 26.x) — `node:sqlite` is forward-compatible.
 
 - [ ] **Step 2: Verify package install is clean**
 
 ```sh
 pnpm install --frozen-lockfile
 ```
-Expected: no errors, no rebuild prompts.
+Expected: `Lockfile is up to date` / `Already up to date`, no rebuild prompts.
 
-- [ ] **Step 3: Verify sharp prebuild includes libheif**
-
-```sh
-node -e "import('sharp').then(m => console.log(JSON.stringify(m.default.format.heif)))"
-```
-Expected output contains `"input":true`. If the output shows `"input":false` (or the heif key is missing entirely), sharp's prebuild does not include libheif and we must patch the Dockerfile (next step).
-
-- [ ] **Step 4: (Conditional) Patch the Dockerfile for libheif**
-
-Only execute this step if Step 3 showed no HEIF input support. The Dockerfile is created in Task 28; for now, if the local environment lacks libheif, install it locally to unblock dev:
+- [ ] **Step 3: Verify sharp installs and loads (JPEG/PNG/WebP only)**
 
 ```sh
-# Arch / CachyOS dev host
-sudo pacman -S --needed libheif vips
-# Then verify Step 3 again
+node -e "import('sharp').then(m => { const f = m.default.format; console.log('jpeg:', !!f.jpeg.input.file, 'png:', !!f.png.input.file, 'webp:', !!f.webp.input.file); })"
 ```
+Expected: `jpeg: true png: true webp: true`. If any of these are `false`, the sharp install is broken — re-run `pnpm install` or report and stop.
 
-Note in `docs/deploy.md` (Task 28) that the runtime image needs `apk add --no-cache vips-heif` when the sharp prebuild lacks HEIF support. Do not skip this — iPhone photos will fail to process otherwise.
+(Note: we do NOT verify HEIC/HEIF support here. Sharp's prebuild includes libheif with AVIF/AV1 support but NOT HEVC, so it cannot decode `.heic`. iPhone HEIC files are converted to JPEG client-side via `heic2any` before upload, so the server never sees them. See Decisions Locked table.)
 
-- [ ] **Step 5: Verify env-var template is complete**
+- [ ] **Step 4: Verify env-var template is complete**
 
 ```sh
-cat .env.example
+for var in PORT SECONDLINE_PUBLIC_URL MEDIA_PUBLIC_URL ADMIN_PASSWORD ADMIN_SESSION_SECRET SECONDLINE_DB_DIR RESEND_API_KEY RESEND_FROM NOTIFY_EMAIL SECONDLINE_ACTIVE_BACKEND WASABI_ACCESS_KEY WASABI_SECRET_KEY SECONDLINE_CRON_TOKEN; do
+  grep -q "^${var}=" .env.example && echo "  OK $var" || echo "  MISSING $var"
+done
 ```
+Expected: every entry prints `OK`. All of these are already in the bootstrap. If anything prints `MISSING`, add it now.
 
-Confirm it contains entries for:
-- `PORT`, `SECONDLINE_PUBLIC_URL`, `MEDIA_PUBLIC_URL`
-- `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET`
-- `SECONDLINE_DB_DIR`
-- `RESEND_API_KEY`, `RESEND_FROM`, `NOTIFY_EMAIL`
-- `SECONDLINE_ACTIVE_BACKEND`, `WASABI_ACCESS_KEY`, `WASABI_SECRET_KEY`
-- `SECONDLINE_CRON_TOKEN`
-
-All of these are already in the bootstrap. If anything is missing, add it now.
-
-- [ ] **Step 6: Create local `.env` for dev**
+- [ ] **Step 5: Create local `.env` for dev**
 
 ```sh
 cp .env.example .env
@@ -188,16 +170,16 @@ SECONDLINE_CRON_TOKEN=dev-cron-token
 # Leave WASABI_* blank — first run uses an in-memory test backend until you wire up real credentials
 ```
 
-- [ ] **Step 7: Verify build still works**
+- [ ] **Step 6: Verify build still works**
 
 ```sh
 pnpm typecheck && pnpm build
 ```
 Expected: both succeed (the bootstrap had a working build).
 
-- [ ] **Step 8: No commit needed**
+- [ ] **Step 7: No commit needed**
 
-This task makes no code changes (assuming Step 4 was skipped). If the Dockerfile was patched, defer the commit to Task 28 where the Dockerfile is fully written.
+This task makes no code changes. It only verifies the environment and creates `.env` (which is gitignored).
 
 ---
 
@@ -2329,11 +2311,14 @@ async function makeJpegBuffer(w = 200, h = 100): Promise<Buffer> {
 }
 
 describe('media-processing', () => {
-  it('isAcceptedMime accepts jpeg, png, webp, heic, heif, common video MIMEs', () => {
+  // Note: heic/heif intentionally excluded — converted client-side before upload, server never sees them.
+  it('isAcceptedMime accepts jpeg, png, webp, common video MIMEs', () => {
     for (const m of ACCEPTED_IMAGE_MIME) expect(isAcceptedMime(m)).toBe(true);
     for (const m of ACCEPTED_VIDEO_MIME) expect(isAcceptedMime(m)).toBe(true);
     expect(isAcceptedMime('application/pdf')).toBe(false);
     expect(isAcceptedMime('image/gif')).toBe(false);   // explicitly not in v1
+    expect(isAcceptedMime('image/heic')).toBe(false);  // client converts before upload
+    expect(isAcceptedMime('image/heif')).toBe(false);  // client converts before upload
   });
 
   it('processImageUpload returns normalized JPEG + thumbnail + dimensions', async () => {
@@ -2393,8 +2378,12 @@ Create `src/lib/secondline/media-processing.ts`:
 /**
  * Second Line media processing.
  *
- * Photos: HEIC/HEIF → JPEG conversion, EXIF auto-rotate, dimension extraction,
- * thumbnail generation (400 px longest edge). Output is always JPEG.
+ * Photos: EXIF auto-rotate, dimension extraction, thumbnail generation
+ * (400 px longest edge). Output is always JPEG. Input accepted: JPEG, PNG,
+ * WebP. **HEIC is NOT processed here** — the guest upload island converts
+ * .heic → JPEG in the browser via heic2any before posting, because sharp's
+ * npm prebuild does not include libde265 (the HEVC decoder needed for
+ * iPhone HEIC files).
  *
  * Videos: pass-through. We do not transcode in v1. We don't even probe frame
  * size — that requires ffprobe which is out of scope. The wall renders videos
@@ -2412,8 +2401,13 @@ export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;   // 10 MB
 export const MAX_VIDEO_BYTES = 50 * 1024 * 1024;   // 50 MB
 
 export const ACCEPTED_IMAGE_MIME = [
-  'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif',
+  'image/jpeg', 'image/jpg', 'image/png', 'image/webp',
 ];
+// HEIC/HEIF intentionally excluded — clients (the guest upload island) convert
+// .heic to JPEG via heic2any in the browser before POSTing. The server's sharp
+// prebuild lacks libde265 (HEVC) so it cannot decode HEIC files. If a raw HEIC
+// somehow reaches this code path (e.g. heic2any failed), the upload route will
+// 415 with a clear error and the guest sees "couldn't process this photo".
 export const ACCEPTED_VIDEO_MIME = [
   'video/mp4', 'video/quicktime', 'video/webm',
 ];
@@ -2496,7 +2490,7 @@ Expected: PASS.
 
 ```sh
 git add src/lib/secondline/media-processing.ts src/lib/secondline/__tests__/media-processing.test.ts
-git commit -m "feat(secondline): media processing pipeline (HEIC->JPEG, EXIF rotate, thumbnail)"
+git commit -m "feat(secondline): media processing pipeline (EXIF rotate, thumbnail; HEIC is client-side)"
 ```
 
 ---
@@ -3353,7 +3347,15 @@ if (event.status === 'expired') {
 </html>
 ```
 
-- [ ] **Step 2: Implement the React upload island**
+- [ ] **Step 2: Add `heic2any` dependency (browser-only)**
+
+```sh
+pnpm add heic2any
+```
+
+`heic2any` is a small (~50KB minified) wrapper around the `libheif-js` WASM build. It's loaded lazily in the upload island so the WASM blob (~500KB gzipped) only downloads when a guest actually picks a `.heic` file. iPhone users will trigger the load on first photo pick; everyone else never downloads it.
+
+- [ ] **Step 3: Implement the React upload island**
 
 Create `src/components/secondline/UploadIsland.tsx`:
 
@@ -3371,7 +3373,7 @@ Create `src/components/secondline/UploadIsland.tsx`:
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-type TileState = 'queued' | 'uploading' | 'ok' | 'failed';
+type TileState = 'queued' | 'preparing' | 'uploading' | 'ok' | 'failed';
 
 interface Tile {
   id: string;
@@ -3386,6 +3388,27 @@ interface Tile {
 interface Props { slug: string; }
 
 const NAME_STORAGE_KEY = 'sn_uploader_name';
+
+const HEIC_MIMES = new Set(['image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence']);
+
+function isHeic(file: File): boolean {
+  if (HEIC_MIMES.has(file.type.toLowerCase())) return true;
+  // Some iOS Safari builds set type='' — fall back to extension sniff
+  return /\.(heic|heif)$/i.test(file.name);
+}
+
+async function maybeConvertHeic(file: File): Promise<File> {
+  if (!isHeic(file)) return file;
+  // Lazy-load heic2any only when needed — keeps the ~500KB WASM out of
+  // the initial bundle for non-iPhone guests.
+  const mod = await import('heic2any');
+  const heic2any = mod.default;
+  const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 });
+  // heic2any returns Blob | Blob[]; flatten if needed
+  const out = Array.isArray(blob) ? blob[0] : blob;
+  const newName = file.name.replace(/\.(heic|heif)$/i, '.jpg');
+  return new File([out], newName, { type: 'image/jpeg', lastModified: file.lastModified });
+}
 
 export default function UploadIsland({ slug }: Props) {
   const [name, setName] = useState('');
@@ -3416,7 +3439,7 @@ export default function UploadIsland({ slug }: Props) {
     };
   }, []);
 
-  function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
     const trimmed = name.trim();
@@ -3427,9 +3450,10 @@ export default function UploadIsland({ slug }: Props) {
       name: f.name,
       size: f.size,
       previewUrl: URL.createObjectURL(f),
-      state: 'queued',
+      state: isHeic(f) ? 'preparing' : 'queued',
       attempt: 0,
     }));
+    // Show 'preparing' tile state for the duration of HEIC conversion (if any)
     setTiles(prev => [...newTiles, ...prev]);
 
     if (fileRef.current) fileRef.current.value = '';
@@ -3442,13 +3466,24 @@ export default function UploadIsland({ slug }: Props) {
       return;
     }
     for (let i = 0; i < files.length; i++) {
-      sw.postMessage({
-        type: 'enqueue',
-        id: newTiles[i].id,
-        slug,
-        file: files[i],
-        uploaderName: trimmed || null,
-      });
+      const tile = newTiles[i];
+      try {
+        const ready = await maybeConvertHeic(files[i]);
+        sw.postMessage({
+          type: 'enqueue',
+          id: tile.id,
+          slug,
+          file: ready,
+          uploaderName: trimmed || null,
+        });
+        // SW will broadcast progress events that transition state from
+        // 'preparing' → 'uploading' → 'ok'
+      } catch (err) {
+        console.error('[secondline] HEIC conversion failed', err);
+        setTiles(prev => prev.map(t => t.id === tile.id
+          ? { ...t, state: 'failed' as TileState, error: 'Couldn\'t prepare this photo' }
+          : t));
+      }
     }
   }
 
@@ -3509,6 +3544,7 @@ export default function UploadIsland({ slug }: Props) {
                           color: '#fff', fontSize: 13, fontWeight: 700, textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}>
               {t.state === 'ok' && '✓'}
               {t.state === 'uploading' && '…'}
+              {t.state === 'preparing' && 'Preparing…'}
               {t.state === 'queued' && '·'}
               {t.state === 'failed' && '!'}
             </div>
@@ -3520,18 +3556,18 @@ export default function UploadIsland({ slug }: Props) {
 }
 ```
 
-- [ ] **Step 3: Verify typecheck**
+- [ ] **Step 4: Verify typecheck**
 
 ```sh
 pnpm typecheck
 ```
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```sh
-git add src/pages/u/[slug].astro src/components/secondline/UploadIsland.tsx
-git commit -m "feat(secondline): guest upload page and React island with SW-backed retry"
+git add src/pages/u/[slug].astro src/components/secondline/UploadIsland.tsx package.json pnpm-lock.yaml
+git commit -m "feat(secondline): guest upload page and React island with SW-backed retry (heic2any client-side HEIC conversion)"
 ```
 
 ---
@@ -5286,9 +5322,9 @@ Create `Dockerfile` at the repo root:
 FROM node:22-alpine AS build
 WORKDIR /app
 
-# Build deps for sharp (libvips); HEIF input depends on the sharp prebuild —
-# add vips-heif here too so processing iPhone uploads doesn't fail.
-RUN apk add --no-cache vips vips-heif
+# Build deps for sharp (libvips). HEIC is converted client-side via heic2any
+# in the browser, so we do NOT need vips-heif or libde265 server-side.
+RUN apk add --no-cache vips
 
 # Pin pnpm via corepack
 RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
@@ -5308,8 +5344,9 @@ RUN pnpm build
 FROM node:22-alpine AS runtime
 WORKDIR /app
 
-# Runtime libvips + libheif for sharp at request time
-RUN apk add --no-cache vips vips-heif tini
+# Runtime libvips for sharp + tini for proper PID 1 signal handling.
+# No vips-heif: HEIC is handled in the browser (see Decisions Locked table).
+RUN apk add --no-cache vips tini
 
 RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
 
@@ -5654,7 +5691,7 @@ Walk every section of the spec and confirm a task implements it:
 | §7.8 Retention | Task 26 (retention sweep + reminders + cron endpoints) |
 | §8 Data model | Task 3 (schema), 8 (types), 12 (events DB), 13 (assets DB) |
 | §9 Tech stack | Task 1 (verify) — everything is bootstrap, no install task |
-| §10 Risks | Task 1 (HEIC verification), 14 (HEIC processing), 31 (Dockerfile vips-heif) |
+| §10 Risks | Task 1 (env verification; documents the HEIC server-side limitation), 21 (heic2any client-side conversion), 14 (server-side accepted MIMEs explicitly exclude HEIC) |
 | §11 Success criteria | Task 32 (e2e smoke test) |
 | §12 Out of scope | n/a (negative scope; webhook future-work mentioned in deploy.md) |
 

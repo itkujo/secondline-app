@@ -12,6 +12,9 @@ that monorepo; the canonical spec and plan now live here in `docs/`.
   Single file at `${SECONDLINE_DB_DIR:-./data}/secondline.db`.
 - Tailwind v4 via `@tailwindcss/vite`
 - AWS SDK v3 (`@aws-sdk/client-s3`) for object storage — supports Wasabi, MinIO, Garage, any S3-compatible endpoint
+- HEIC/HEIF: converted **client-side** in the browser via `heic2any` (lazy-loaded).
+  Server-side sharp prebuilds lack libde265 (HEVC) so they cannot decode iPhone
+  HEIC files. This is why ACCEPTED_IMAGE_MIME on the server does not include HEIC.
 - Resend for transactional email
 - vitest for tests, `astro check` for typecheck (no ESLint/Biome/Prettier)
 - pnpm 10.x
