@@ -1,0 +1,85 @@
+---
+/**
+ * Admin: create a Second Line event.
+ *
+ * Single form posting to /api/admin/events. On success, redirects to the
+ * newly-created event's detail page (?created=1 surfaces a confirmation
+ * banner there).
+ */
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import { listBackends } from '@/lib/secondline/storage/backends';
+import { getEnv } from '@/lib/env';
+
+export const prerender = false;
+
+const backends = listBackends();
+const defaultBackend = getEnv('SECONDLINE_ACTIVE_BACKEND') || 'wasabi';
+const error = Astro.url.searchParams.get('error') || '';
+---
+<AdminLayout section="events" title="New event">
+  <p style="margin:0 0 6px;"><a href="/admin/events" style="color:#d4af37;">← All events</a></p>
+  <h1>New event</h1>
+  <p style="color:#b8b2a5;margin:0 0 24px;">Creates the gallery slug + QR code. Storage backend locks after the first upload.</p>
+
+  {error && (
+    <div style="background:rgba(160,80,80,0.12);border:1px solid rgba(160,80,80,0.3);color:#d08989;padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:14px;">
+      {error}
+    </div>
+  )}
+
+  <form method="POST" action="/api/admin/events" class="event-form">
+    <div class="row">
+      <label>
+        <span>Host first name</span>
+        <input type="text" name="host_first_name" required maxlength="80" autocomplete="given-name" />
+      </label>
+      <label>
+        <span>Host last name</span>
+        <input type="text" name="host_last_name" required maxlength="80" autocomplete="family-name" />
+      </label>
+    </div>
+
+    <label>
+      <span>Host email</span>
+      <input type="email" name="host_email" required maxlength="200" autocomplete="email" />
+    </label>
+
+    <label>
+      <span>Event date</span>
+      <input type="date" name="event_date" required />
+    </label>
+
+    <label>
+      <span>Storage backend</span>
+      <select name="storage_backend_id" required>
+        {backends.map(b => (
+          <option value={b.id} selected={b.id === defaultBackend}>{b.label}</option>
+        ))}
+      </select>
+    </label>
+
+    <label>
+      <span>PicTime gallery URL (optional)</span>
+      <input type="url" name="pictime_gallery_url" placeholder="https://pictime.example/your-gallery" />
+    </label>
+
+    <div style="margin-top:8px;">
+      <button type="submit" class="primary-btn">Create event</button>
+    </div>
+  </form>
+
+  <style>
+    .event-form { display: grid; gap: 14px; max-width: 560px; }
+    .event-form .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .event-form label { display: block; }
+    .event-form label > span { display: block; font-size: 12px; color: #b8b2a5; margin-bottom: 6px; letter-spacing: 0.04em; }
+    .event-form input, .event-form select {
+      width: 100%; box-sizing: border-box; padding: 10px 12px; background: #111; color: #f8f4ea;
+      border: 1px solid #2a2a2a; border-radius: 6px; font-size: 14px;
+    }
+    .primary-btn {
+      background: #d4af37; color: #050505; border: 0; padding: 11px 22px;
+      border-radius: 999px; font-weight: 600; cursor: pointer; font-size: 14px;
+    }
+  </style>
+</AdminLayout>
