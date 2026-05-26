@@ -1,0 +1,82 @@
+---
+// Placeholder landing page for the standalone Second Line app.
+// The actual upload flow, live wall, and admin are wired up by the
+// implementation plan tasks — for now this just proves Astro boots.
+const year = new Date().getFullYear();
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <meta name="color-scheme" content="dark" />
+    <title>Second Line — coming soon</title>
+    <style>
+      :root {
+        --bg: #0a0a0a;
+        --ink: #f5f5f5;
+        --muted: #9a9a9a;
+        --gold: #d4a24c;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        min-height: 100dvh;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        display: grid;
+        place-items: center;
+        padding: 2rem;
+      }
+      main {
+        text-align: center;
+        max-width: 38rem;
+      }
+      .eyebrow {
+        font-size: 0.75rem;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--gold);
+        margin: 0 0 1.25rem;
+      }
+      h1 {
+        font-size: clamp(2.5rem, 6vw, 4.5rem);
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        line-height: 1.05;
+        margin: 0 0 1rem;
+      }
+      h1 .accent { color: var(--gold); }
+      p {
+        color: var(--muted);
+        font-size: 1.0625rem;
+        line-height: 1.55;
+        margin: 0 auto 2rem;
+        max-width: 32rem;
+      }
+      footer {
+        position: fixed;
+        bottom: 1.25rem;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 0.75rem;
+        color: var(--muted);
+        opacity: 0.6;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Smile NOLA</p>
+      <h1>Second <span class="accent">Line</span></h1>
+      <p>
+        Live event photo &amp; video walls. Coming soon.
+      </p>
+    </main>
+    <footer>&copy; {year} Smile NOLA</footer>
+  </body>
+</html>
