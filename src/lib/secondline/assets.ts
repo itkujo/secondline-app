@@ -32,7 +32,7 @@ export function recordAsset(input: RecordAssetInput): AssetRow {
   `).get(
     input.eventId, input.source, input.storageKey, input.thumbStorageKey,
     input.mimeType, input.byteSize, input.width, input.height, input.durationMs, input.uploaderName,
-  ) as AssetRow;
+  ) as unknown as AssetRow;
 }
 
 export function getAsset(id: number): AssetRow | null {
@@ -44,7 +44,7 @@ export function listAssetsForEvent(eventId: number): AssetRow[] {
     SELECT * FROM assets
     WHERE event_id = ? AND deleted_at IS NULL
     ORDER BY uploaded_at ASC, id ASC
-  `).all(eventId) as AssetRow[];
+  `).all(eventId) as unknown as AssetRow[];
 }
 
 export function listAssetsSince(eventId: number, sinceIso: string): AssetRow[] {
@@ -52,7 +52,7 @@ export function listAssetsSince(eventId: number, sinceIso: string): AssetRow[] {
     SELECT * FROM assets
     WHERE event_id = ? AND deleted_at IS NULL AND uploaded_at > ?
     ORDER BY uploaded_at ASC, id ASC
-  `).all(eventId, sinceIso) as AssetRow[];
+  `).all(eventId, sinceIso) as unknown as AssetRow[];
 }
 
 export function softDeleteAsset(id: number): void {
@@ -70,5 +70,5 @@ export function totalBytesForEvent(eventId: number): number {
 }
 
 export function listAllAssetsForPurge(eventId: number): AssetRow[] {
-  return getDb().prepare(`SELECT * FROM assets WHERE event_id = ?`).all(eventId) as AssetRow[];
+  return getDb().prepare(`SELECT * FROM assets WHERE event_id = ?`).all(eventId) as unknown as AssetRow[];
 }

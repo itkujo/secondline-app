@@ -54,7 +54,7 @@ export function createEvent(input: CreateEventInput): EventRow {
         input.event_date,
         input.pictime_gallery_url ?? null,
         expires_at,
-      ) as EventRow;
+      ) as unknown as EventRow;
     } catch (err: unknown) {
       const msg = String((err as Error)?.message ?? '');
       if (attempt === 7 || !/UNIQUE/i.test(msg)) throw err;
@@ -93,9 +93,9 @@ export function markWarned30(eventId: number): void {
 }
 
 export function listActiveEvents(): EventRow[] {
-  return getDb().prepare(`SELECT * FROM events WHERE status = 'active' ORDER BY created_at DESC`).all() as EventRow[];
+  return getDb().prepare(`SELECT * FROM events WHERE status = 'active' ORDER BY created_at DESC`).all() as unknown as EventRow[];
 }
 
 export function listEventsExpiringBefore(iso: string): EventRow[] {
-  return getDb().prepare(`SELECT * FROM events WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= ?`).all(iso) as EventRow[];
+  return getDb().prepare(`SELECT * FROM events WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= ?`).all(iso) as unknown as EventRow[];
 }
