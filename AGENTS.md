@@ -8,12 +8,15 @@ that monorepo; the canonical spec and plan now live here in `docs/`.
 
 - Astro 5 SSR, `@astrojs/node` standalone adapter
 - React 18 islands (`@astrojs/react`)
-- SQLite via `better-sqlite3` (single file at `${SECONDLINE_DB_DIR:-./data}/secondline.db`)
+- SQLite via Node's built-in `node:sqlite` module (no native dep, no compile step).
+  Single file at `${SECONDLINE_DB_DIR:-./data}/secondline.db`.
 - Tailwind v4 via `@tailwindcss/vite`
 - AWS SDK v3 (`@aws-sdk/client-s3`) for object storage — supports Wasabi, MinIO, Garage, any S3-compatible endpoint
 - Resend for transactional email
 - vitest for tests, `astro check` for typecheck (no ESLint/Biome/Prettier)
 - pnpm 10.x
+- Node **>= 22.5.0** required (`node:sqlite` was added there, stable since 22.12).
+  Enforced via `engines.node` in package.json.
 
 ## Conventions
 
@@ -39,5 +42,14 @@ checks, or `SECONDLINE_PUBLIC_URL`/`MEDIA_PUBLIC_URL` env vars, or
   UI build-pill so you can verify which SHA is actually live (`curl -s "https://secondline.smile-nola.com/?cb=$(date +%s)"`).
 - If a deploy looks stale, use Coolify's "Force rebuild without cache" not
   "Deploy" — Docker layer cache can serve a stale `COPY . .` layer.
-- Alpine 3.22 is pinned in the Dockerfile because 3.23's musl breaks
-  better-sqlite3's prebuilt binary. Any new native dep must verify Alpine 3.22.
+- The Dockerfile pins a Node 22+ Alpine base. Because we use `node:sqlite`
+  (no native build), there's no Alpine-version constraint from SQLite. The
+  only native deps are `sharp` (image processing) — if `sharp` ever changes
+  its prebuild support, verify before bumping the base image.
+
+## Why `node:sqlite` instead of `better-sqlite3`
+
+- Zero native build step (works on any Node 22.5+ without `node-gyp`)
+- Ships with Node — one fewer thing to break across Alpine versions
+- API is a strict subset of better-sqlite3 (prepared statements + `run`/`get`/`all`/`iterate`)
+- If we ever need pragmas or features `node:sqlite` lacks, swapping back is a small DB-layer edit
