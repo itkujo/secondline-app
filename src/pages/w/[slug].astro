@@ -1,0 +1,57 @@
+---
+/**
+ * The Wall.
+ *
+ * SSR shell that fetches the initial asset list server-side so the page can
+ * paint media on first frame (no JS-blocking initial load). The React island
+ * takes over for SSE + rotation + pre-cache + fullscreen behavior.
+ */
+import WallIsland from '@/components/secondline/WallIsland';
+import { getEventBySlug } from '@/lib/secondline/events';
+import { listAssetsForEvent } from '@/lib/secondline/assets';
+import { isValidSlugShape } from '@/lib/secondline/slugs';
+import type { PublicAsset, AssetRow } from '@/lib/secondline/types';
+
+export const prerender = false;
+
+const slug = Astro.params.slug ?? '';
+if (!isValidSlugShape(slug)) return Astro.redirect('/404');
+const event = getEventBySlug(slug);
+if (!event) return Astro.redirect('/404');
+if (event.status === 'expired') {
+  if (event.pictime_gallery_url) return Astro.redirect(event.pictime_gallery_url);
+  return Astro.redirect('/404');
+}
+
+const rows = listAssetsForEvent(event.id);
+const initialAssets: PublicAsset[] = rows.map((r: AssetRow) => ({
+  id: r.id,
+  src: `/m/${slug}/${r.id}`,
+  thumb: r.thumb_storage_key ? `/m/${slug}/${r.id}_thumb` : `/m/${slug}/${r.id}`,
+  mime_type: r.mime_type,
+  width: r.width, height: r.height, duration_ms: r.duration_ms,
+  uploader_name: r.uploader_name, uploaded_at: r.uploaded_at,
+}));
+const initialSince = rows.length ? rows[rows.length - 1].uploaded_at : new Date().toISOString();
+const isKiosk = Astro.url.searchParams.get('kiosk') === '1';
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Wall · Second Line</title>
+    <style>
+      :root { color-scheme: dark; }
+      html, body { margin: 0; padding: 0; background: #050505; color: #f8f4ea; height: 100%; overflow: hidden;
+                   font-family: system-ui, sans-serif; }
+      #wall-root { position: fixed; inset: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="wall-root">
+      <WallIsland client:load slug={slug} initialAssets={initialAssets} initialSince={initialSince} kiosk={isKiosk} />
+    </div>
+  </body>
+</html>
