@@ -1,0 +1,30 @@
+# Single-service deploy. Coolify owns Traefik labels; this file only declares
+# the app container, its env-var contract, and the persistent data volume.
+# DO NOT add a second service here for media — the same app handles both
+# subdomains via Coolify domain routing.
+
+services:
+  app:
+    build:
+      context: .
+      args:
+        SOURCE_COMMIT: ${SOURCE_COMMIT:-dev}
+    restart: unless-stopped
+    environment:
+      PORT: "3000"
+      NODE_ENV: production
+      SECONDLINE_DB_DIR: /data
+      # All other env vars come from Coolify-managed application env:
+      # SECONDLINE_PUBLIC_URL, MEDIA_PUBLIC_URL,
+      # ADMIN_PASSWORD, ADMIN_SESSION_SECRET,
+      # RESEND_API_KEY, RESEND_FROM,
+      # SECONDLINE_ACTIVE_BACKEND, WASABI_ACCESS_KEY, WASABI_SECRET_KEY,
+      # SECONDLINE_CRON_TOKEN,
+      # SOURCE_COMMIT (injected by Coolify at build time)
+    volumes:
+      - secondline_data:/data
+    expose:
+      - "3000"
+
+volumes:
+  secondline_data:
