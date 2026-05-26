@@ -1,0 +1,14 @@
+{
+  "backends": [
+    {
+      "id": "wasabi",
+      "label": "Wasabi (production)",
+      "endpoint": "https://s3.us-east-1.wasabisys.com",
+      "region": "us-east-1",
+      "bucket": "secondline-prod",
+      "access_key_env": "WASABI_ACCESS_KEY",
+      "secret_key_env": "WASABI_SECRET_KEY",
+      "force_path_style": false
+    }
+  ]
+}
