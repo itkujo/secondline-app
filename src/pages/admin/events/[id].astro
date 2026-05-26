@@ -1,0 +1,204 @@
+---
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import { getEventById } from '@/lib/secondline/events';
+import { listAssetsForEvent, countAssetsForEvent } from '@/lib/secondline/assets';
+import { listBackends } from '@/lib/secondline/storage/backends';
+import { renderQrSvg } from '@/lib/secondline/qr';
+import { getEnv } from '@/lib/env';
+
+export const prerender = false;
+
+const id = Number(Astro.params.id);
+if (!Number.isInteger(id)) return Astro.redirect('/admin/events');
+const event = getEventById(id);
+if (!event) return Astro.redirect('/admin/events');
+
+const assets = listAssetsForEvent(event.id);
+const backends = listBackends();
+const base = getEnv('SECONDLINE_PUBLIC_URL') || 'https://secondline.smile-nola.com';
+const uploadUrl = `${base}/u/${event.slug}`;
+const wallUrl = `${base}/w/${event.slug}`;
+const galleryUrl = `${base}/g/${event.slug}`;
+const qrSvg = await renderQrSvg(uploadUrl, { size: 280 });
+const backendLocked = countAssetsForEvent(event.id) > 0;
+const justCreated = Astro.url.searchParams.get('created') === '1';
+---
+<AdminLayout section="events" title={`Event ${event.slug}`}>
+  <p style="margin:0 0 6px;"><a href="/admin/events" style="color:#d4af37;">← All events</a></p>
+  <h1 style="margin:0 0 4px;">{event.host_first_name} {event.host_last_name}</h1>
+  <p style="color:#b8b2a5;margin:0 0 24px;">
+    Event date {event.event_date} · expires {event.expires_at?.slice(0,10) ?? '—'} ·
+    {event.host_email}
+  </p>
+
+  {justCreated && (
+    <div style="background:rgba(70,160,90,0.12);border:1px solid rgba(70,160,90,0.3);color:#6ec089;padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:14px;">
+      Event created. Print the QR below for the venue.
+    </div>
+  )}
+
+  <div class="grid">
+    <section class="card">
+      <h2>Public URLs</h2>
+      <ul class="urls">
+        <li><label>Upload</label><code>{uploadUrl}</code><button class="chip copy-btn" data-copy={uploadUrl}>Copy</button></li>
+        <li><label>Wall</label><code>{wallUrl}</code><button class="chip copy-btn" data-copy={wallUrl}>Copy</button></li>
+        <li><label>Gallery</label><code>{galleryUrl}</code><button class="chip copy-btn" data-copy={galleryUrl}>Copy</button></li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>Print this QR for signage</h2>
+      <div class="qr" set:html={qrSvg}></div>
+      <p style="color:#b8b2a5;font-size:13px;margin:8px 0 0;">Scans to <code>{uploadUrl}</code></p>
+      <p><button class="chip" onclick="window.print()">Print</button></p>
+    </section>
+
+    <section class="card">
+      <h2>Storage backend</h2>
+      <p style="color:#b8b2a5;font-size:13px;margin:0 0 8px;">
+        {backendLocked
+          ? <>Locked — assets already uploaded ({assets.length}).</>
+          : <>Choose where uploads land. Locked once the first upload arrives.</>}
+      </p>
+      <select id="backend-select" disabled={backendLocked} class="select">
+        {backends.map(b => (
+          <option value={b.id} selected={b.id === event.storage_backend_id}>{b.label}</option>
+        ))}
+      </select>
+    </section>
+
+    <section class="card">
+      <h2>PicTime gallery URL</h2>
+      <p style="color:#b8b2a5;font-size:13px;margin:0 0 8px;">Used by the gallery "Buy prints" CTA and the expired redirect.</p>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input id="pictime-input" type="url" placeholder="https://pictime.example/your-gallery"
+               value={event.pictime_gallery_url ?? ''} class="text-input" />
+        <button id="pictime-save" class="chip">Save</button>
+      </div>
+      <span id="pictime-status" style="color:#b8b2a5;font-size:12px;margin-top:6px;display:block;"></span>
+    </section>
+
+    <section class="card">
+      <h2>Send gallery email</h2>
+      <p style="color:#b8b2a5;font-size:13px;margin:0 0 8px;">
+        Emails the host their gallery URL + ZIP link. Send when the event is over.
+      </p>
+      <p style="color:#b8b2a5;font-size:12px;margin:0 0 12px;">
+        Recipient: <code>{event.host_email}</code>
+      </p>
+      <button id="send-gallery-btn" class="chip">Send gallery email</button>
+      <span id="send-gallery-status" style="color:#b8b2a5;font-size:12px;margin-left:8px;"></span>
+    </section>
+  </div>
+
+  <h2 style="margin-top:32px;">Assets ({assets.length})</h2>
+  {assets.length === 0
+    ? <p style="color:#b8b2a5;">None yet.</p>
+    : (
+      <ul class="asset-grid">
+        {assets.map(a => (
+          <li>
+            <a href={`/m/${event.slug}/${a.id}`} target="_blank" rel="noopener">
+              <img src={`/m/${event.slug}/${a.id}_thumb`} alt="" loading="lazy" />
+            </a>
+            <div class="asset-meta">
+              <span>{a.uploader_name ?? <em style="color:#666;">anonymous</em>}</span>
+              <button class="del-btn" data-asset-id={a.id}>Delete</button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    )}
+
+  <script define:vars={{ eventId: event.id }}>
+    document.querySelectorAll('.copy-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const val = btn.getAttribute('data-copy') || '';
+        try {
+          await navigator.clipboard.writeText(val);
+          const orig = btn.textContent;
+          btn.textContent = 'Copied';
+          setTimeout(() => { btn.textContent = orig; }, 1200);
+        } catch {
+          btn.textContent = 'Press ⌘C';
+        }
+      });
+    });
+
+    document.getElementById('backend-select')?.addEventListener('change', async (e) => {
+      const select = e.currentTarget;
+      select.disabled = true;
+      const res = await fetch(`/api/admin/events/${eventId}`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ storage_backend_id: select.value }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        alert(j.error || 'Failed to update backend');
+        location.reload();
+      } else {
+        select.disabled = false;
+      }
+    });
+
+    document.getElementById('pictime-save')?.addEventListener('click', async () => {
+      const input = document.getElementById('pictime-input');
+      const status = document.getElementById('pictime-status');
+      status.textContent = 'Saving…';
+      const res = await fetch(`/api/admin/events/${eventId}`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ pictime_gallery_url: input.value || null }),
+      });
+      const j = await res.json().catch(() => ({}));
+      status.textContent = res.ok ? 'Saved ✓' : (j.error || 'Failed');
+    });
+
+    document.getElementById('send-gallery-btn')?.addEventListener('click', async () => {
+      const btn = document.getElementById('send-gallery-btn');
+      const status = document.getElementById('send-gallery-status');
+      btn.disabled = true;
+      status.textContent = 'Sending…';
+      const res = await fetch(`/api/admin/events/${eventId}/send-gallery`, { method: 'POST' });
+      const j = await res.json().catch(() => ({}));
+      status.textContent = res.ok ? 'Sent ✓' : (j.error || 'Failed');
+      setTimeout(() => { btn.disabled = false; }, 2000);
+    });
+
+    document.querySelectorAll('.del-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const assetId = btn.getAttribute('data-asset-id');
+        if (!confirm('Delete this asset?')) return;
+        btn.disabled = true;
+        const res = await fetch(`/api/admin/events/${eventId}/assets/${assetId}`, { method: 'DELETE' });
+        if (res.ok) btn.closest('li')?.remove();
+        else { alert('Failed to delete'); btn.disabled = false; }
+      });
+    });
+  </script>
+
+  <style>
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+    .card { background: #0d0d0d; border: 1px solid #1a1a1a; border-radius: 10px; padding: 16px; }
+    .card h2 { font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase; color: #d4af37; margin: 0 0 12px; }
+    .urls { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+    .urls li { display: grid; grid-template-columns: 70px 1fr auto; gap: 8px; align-items: center; }
+    .urls label { color: #b8b2a5; font-size: 12px; }
+    .urls code { background: #181818; padding: 4px 8px; border-radius: 4px; font-size: 12px; word-break: break-all; }
+    .qr { display: flex; justify-content: center; padding: 8px; background: white; border-radius: 8px; }
+    .qr svg { width: 220px; height: 220px; display: block; }
+    .select, .text-input { width: 100%; padding: 8px 10px; background: #111; color: #f8f4ea;
+      border: 1px solid #2a2a2a; border-radius: 6px; font-size: 13px; box-sizing: border-box; }
+    .chip { display: inline-block; padding: 6px 12px; border-radius: 999px; background: rgba(212,175,55,0.08);
+      color: #d4af37; text-decoration: none; font-size: 12px; border: 1px solid rgba(212,175,55,0.3); cursor: pointer; }
+    .chip:hover { background: rgba(212,175,55,0.16); }
+    .asset-grid { list-style: none; padding: 0; margin: 12px 0 0; display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+    .asset-grid li { background: #111; border-radius: 6px; overflow: hidden; }
+    .asset-grid img { display: block; width: 100%; aspect-ratio: 1/1; object-fit: cover; }
+    .asset-meta { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px;
+      font-size: 11px; color: #b8b2a5; }
+    .del-btn { background: transparent; border: 0; color: #d08989; cursor: pointer; font-size: 11px; }
+    @media print { .card:not(:nth-child(2)) { display: none; } body { background: white; color: black; } }
+  </style>
+</AdminLayout>
