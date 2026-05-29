@@ -40,12 +40,16 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/secondline-backends.json ./secondline-backends.json
 COPY --from=build /app/public ./public
 
-# The DB and uploads live in /data; create with permissive perms so the
-# named volume mounts cleanly even if Coolify owns it as root.
-RUN mkdir -p /data && chmod 777 /data
+# Run as the baked-in `node` user (UID/GID 1000) so volume contents aren't
+# root-owned. CasaOS / Synology / Coolify all mount cleanly at 1000:1000.
+# /data is the persistent volume mount for secondline.db; chown so the
+# non-root process can write on first boot.
+RUN mkdir -p /data && chown -R node:node /data /app
 ENV SECONDLINE_DB_DIR=/data
 ENV NODE_ENV=production
 ENV PORT=3000
+
+USER node
 
 EXPOSE 3000
 
@@ -53,5 +57,8 @@ EXPOSE 3000
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "./dist/server/entry.mjs"]
 
+# Liveness via the dedicated /healthz endpoint (cheap, no middleware, no
+# DB write). Returns 200 with the build SHA so you can grep the container
+# log for the SHA you expect to be running.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD wget -qO- http://127.0.0.1:3000/admin/login >/dev/null 2>&1 || exit 1
+  CMD wget -qO- http://127.0.0.1:3000/healthz >/dev/null 2>&1 || exit 1

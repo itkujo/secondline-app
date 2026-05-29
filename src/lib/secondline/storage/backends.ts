@@ -6,6 +6,13 @@
  * extension point: adding a new backend at v2 = append a JSON entry + add
  * the credential env vars to Coolify. No code change.
  *
+ * Lazy-strict semantics: backends whose credential env vars are absent are
+ * SKIPPED at load time (with a console.warn) rather than throwing. This lets
+ * the same image carry both `wasabi` and `wasabi-staging` entries in JSON
+ * while only one set of credentials is provided at runtime. getBackend(id)
+ * still throws if you ask for a backend that wasn't successfully loaded —
+ * so misconfiguration is still loud at the moment of use, just not at boot.
+ *
  * Singleton-with-reset pattern so tests can blow away cache between cases.
  */
 
@@ -37,8 +44,12 @@ export function loadBackends(): StorageBackend[] {
   for (const entry of parsed.backends) {
     const accessKey = getEnv(entry.access_key_env);
     const secretKey = getEnv(entry.secret_key_env);
-    if (!accessKey) throw new Error(`Backend ${entry.id}: missing env var ${entry.access_key_env}`);
-    if (!secretKey) throw new Error(`Backend ${entry.id}: missing env var ${entry.secret_key_env}`);
+    if (!accessKey || !secretKey) {
+      console.warn(
+        `[secondline] backend "${entry.id}" skipped: missing ${!accessKey ? entry.access_key_env : entry.secret_key_env}`,
+      );
+      continue;
+    }
     cache.set(entry.id, {
       id: entry.id,
       label: entry.label,
@@ -58,7 +69,11 @@ export function loadBackends(): StorageBackend[] {
 export function getBackend(id: BackendId): StorageBackend {
   if (!_cache) loadBackends();
   const b = _cache!.get(id);
-  if (!b) throw new Error(`Unknown storage backend: ${id}`);
+  if (!b) {
+    throw new Error(
+      `Unknown or unconfigured storage backend: ${id} (check that its credential env vars are set)`,
+    );
+  }
   return b;
 }
 
