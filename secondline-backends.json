@@ -15,7 +15,7 @@
       "label": "Wasabi (staging)",
       "endpoint": "https://s3.us-east-1.wasabisys.com",
       "region": "us-east-1",
-      "bucket": "secondline-staging",
+      "bucket": "secondline-app",
       "access_key_env": "WASABI_STAGING_ACCESS_KEY",
       "secret_key_env": "WASABI_STAGING_SECRET_KEY",
       "force_path_style": false

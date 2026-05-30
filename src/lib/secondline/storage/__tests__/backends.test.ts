@@ -51,7 +51,7 @@ describe('backend registry', () => {
     const all = loadBackends();
     expect(all.some(b => b.id === 'wasabi')).toBe(true);
     expect(all.some(b => b.id === 'wasabi-staging')).toBe(true);
-    expect(getBackend('wasabi-staging').bucket).toBe('secondline-staging');
+    expect(getBackend('wasabi-staging').bucket).toBe('secondline-app');
   });
 
   it('throws when looking up a backend that was not loaded (unknown or unconfigured)', () => {

@@ -1,26 +1,40 @@
-# Second Line — Staging deploy (CasaOS on ZimaBlade, behind Tailscale)
+# Second Line — Staging deploy (CasaOS on ZimaBlade, Tailscale-internal HTTPS)
 
-A pre-prod environment so you can run Task 32 (end-to-end smoke test) against
-the same Docker image you'll ship to prod, without touching prod Wasabi or
-sending real cron-triggered emails.
+The ZimaBlade is the team's pre-prod test box. Reached over Tailscale by the
+team for internal validation — no public DNS, no public exposure to the
+internet — but **with a real Let's Encrypt cert** issued by Tailscale for
+tailnet traffic. Production is a separate Coolify deploy at
+`secondline.smile-nola.com`; see `docs/deploy.md` for that flow.
 
-This runbook assumes:
-- A ZimaBlade running CasaOS, reachable on your tailnet
-- Tailscale Funnel or a Tailscale-bound subdomain with TLS (iOS Safari refuses
-  Service Worker registration on non-HTTPS, non-localhost origins, which would
-  silently break the upload-retry queue and HEIC conversion)
-- A separate Wasabi bucket `secondline-staging` (see `docs/deploy.md` for the
-  bucket + IAM creation pattern; mirror that for staging)
-- A Resend API key + a verified `from` address you control
+## Why this works
 
-Cron is intentionally NOT scheduled in staging. Retention and expiry-reminder
-crons are reached manually via `curl` when you want to test Step 6/7 of Task
-32. This prevents a misconfigured `expires_at` from wiping a staging event
-out from under you.
+`tailscale serve --https=443` issues a real Let's Encrypt cert for your
+machine's tailnet hostname (`<machine>.<tailnet>.ts.net`) and terminates TLS
+locally. The cert is valid, browsers don't warn, iOS Safari registers
+Service Workers normally — but the URL is only reachable from devices on
+your tailnet. Perfect for team-internal staging.
 
-## 1. Build and ship the image to the ZimaBlade
+This means **every Task 32 step is testable on staging**, including the
+iPhone HEIC + Service Worker retry queue paths. No "skip this and verify in
+prod" caveats.
 
-On your dev machine:
+## Prerequisites
+
+- ZimaBlade running CasaOS, joined to your tailnet, with Docker installed
+- A machine name registered for the ZimaBlade in your tailnet
+  (`tailscale status` on the box shows it — e.g. `zimablade`, becoming
+  `zimablade.<your-tailnet>.ts.net`)
+- Tailscale 1.52+ on the ZimaBlade (the `tailscale serve` syntax used below
+  is the post-1.52 version)
+- HTTPS enabled in your tailnet admin console:
+  https://login.tailscale.com/admin/dns → "HTTPS Certificates" → Enable
+- Phones used for testing have the Tailscale app installed and are signed
+  into the same tailnet
+- Wasabi staging bucket `secondline-app` in `us-east-1`, IAM user scoped to
+  only that bucket, access/secret keys in hand
+- Resend API key + verified `from` address you control
+
+## 1. Build the image on your dev machine
 
 ```sh
 # Tag with the current git SHA so /healthz reports it accurately
@@ -30,21 +44,31 @@ docker build \
   -t secondline-app:staging-$SHA \
   -t secondline-app:staging-latest \
   .
+```
 
-# Save and SCP to the ZimaBlade (replace <zima-tailscale-name>)
+## 2. Ship the image to the ZimaBlade
+
+```sh
 docker save secondline-app:staging-latest | \
   gzip | \
   ssh <zima-tailscale-name> "gunzip | docker load"
 ```
 
-(If you prefer a registry, push to ghcr.io or a self-hosted registry and pull
-on the ZimaBlade. The save/load loop above avoids that for a quick first run.)
+Replace `<zima-tailscale-name>` with the box's tailnet hostname (or its
+tailnet IP). The SSH connection itself goes over the tailnet.
 
-## 2. Drop the compose file on the ZimaBlade
+## 3. Stage the compose stack on the ZimaBlade
 
-The repo's root `docker-compose.yml` was written for Coolify — it builds from
-context. For CasaOS we want a pre-built-image variant. Save this as
-`/var/lib/casaos/apps/secondline-staging/docker-compose.yml` on the box:
+SSH in. Pick `/opt/secondline-staging/` as the stable directory (works
+regardless of CasaOS app conventions):
+
+```sh
+sudo mkdir -p /opt/secondline-staging/data
+sudo chown -R 1000:1000 /opt/secondline-staging/data
+cd /opt/secondline-staging
+```
+
+Create `/opt/secondline-staging/docker-compose.yml`:
 
 ```yaml
 services:
@@ -56,152 +80,148 @@ services:
       PORT: "3000"
       NODE_ENV: production
       SECONDLINE_DB_DIR: /data
-      # everything else from the .env file beside this compose file:
     env_file:
       - ./.env
     volumes:
       - ./data:/data
     ports:
-      # Bind to the Tailscale interface only — the box should not expose
-      # this port on the public LAN. Replace <tailscale-ip> with the actual
-      # IP `tailscale ip -4` reports on the ZimaBlade, OR use Tailscale Funnel
-      # which proxies in front of localhost.
-      - "<tailscale-ip>:3000:3000"
+      # Bind to localhost only on the ZimaBlade. Tailscale serve (next step)
+      # will reverse-proxy from <hostname>.<tailnet>.ts.net:443 → 127.0.0.1:3000.
+      # The container is NOT exposed on the LAN or the public internet.
+      - "127.0.0.1:3000:3000"
 ```
 
-Why a bind-mounted `./data` directory rather than a named volume? On CasaOS,
-bind mounts are visible in the file manager (you can grab a copy of
-`secondline.db` for forensic inspection), and they survive `docker compose
-down -v` without surprises. Named volumes are equally fine if you prefer.
+The bind-mounted `./data` (owned by UID 1000) gives SQLite a place to write
+that's visible host-side for forensic inspection.
 
-Make sure the host `./data` directory is owned by UID 1000 (the in-container
-`node` user) so SQLite can write:
+## 4. Create `.env` next to the compose file
 
-```sh
-mkdir -p /var/lib/casaos/apps/secondline-staging/data
-chown 1000:1000 /var/lib/casaos/apps/secondline-staging/data
-chmod 755 /var/lib/casaos/apps/secondline-staging/data
-```
-
-## 3. Create the staging `.env` next to the compose file
-
-Copy `.env.staging.example` from the repo root to
-`/var/lib/casaos/apps/secondline-staging/.env` on the box and fill in your
-values. The required vars for staging are:
+Edit `/opt/secondline-staging/.env` directly on the box (so secrets never
+enter chat or your dev-machine shell history). Use `.env.staging.example`
+from the repo as a template. Required vars:
 
 ```env
-# What URL the app thinks it's publicly served at. Used in:
-#   - emails (gallery URL, ZIP CTA, expiry warning)
-#   - QR codes printed from the admin event detail
-# MUST be the HTTPS Tailscale-fronted URL, not the bare IP.
-SECONDLINE_PUBLIC_URL=https://secondline-staging.<your-tailnet>.ts.net
-MEDIA_PUBLIC_URL=https://secondline-staging.<your-tailnet>.ts.net
+# What URL the app thinks it's served at. Real HTTPS via Tailscale Serve.
+# Replace zimablade.<tailnet>.ts.net with your actual tailnet hostname.
+SECONDLINE_PUBLIC_URL=https://zimablade.<tailnet>.ts.net
+MEDIA_PUBLIC_URL=https://zimablade.<tailnet>.ts.net
 
 # Admin auth
-ADMIN_PASSWORD=<pick a real one; phones will type it>
+ADMIN_PASSWORD=<pick a real one; you'll type it on phones>
 ADMIN_SESSION_SECRET=<openssl rand -hex 32>
 
-# Resend — real keys so you can verify email rendering in your inbox
+# Real Resend
 RESEND_API_KEY=re_...
 RESEND_FROM=Smile NOLA Staging <staging@your-verified-domain>
 
-# Storage — the STAGING bucket, never prod
+# Storage — the staging bucket, never prod
 SECONDLINE_ACTIVE_BACKEND=wasabi-staging
-WASABI_STAGING_ACCESS_KEY=<IAM key for secondline-staging>
-WASABI_STAGING_SECRET_KEY=<IAM secret for secondline-staging>
+WASABI_STAGING_ACCESS_KEY=<IAM key for secondline-app bucket>
+WASABI_STAGING_SECRET_KEY=<IAM secret for secondline-app bucket>
 
 # Cron is intentionally NOT scheduled in staging. The token still has to be
-# set because the cron endpoints check for it; without this they 503. You'll
+# set because the cron endpoints check for it; without it they 503. You'll
 # fire them manually with curl during Task 32 step 6/7.
 SECONDLINE_CRON_TOKEN=<openssl rand -hex 32>
 ```
 
 Notably absent: `WASABI_ACCESS_KEY` / `WASABI_SECRET_KEY` (prod). The
-backend registry will log a `[secondline] backend "wasabi" skipped: missing
-WASABI_ACCESS_KEY` warning on boot — that's expected and harmless. Only the
-backend referenced by `SECONDLINE_ACTIVE_BACKEND` needs creds.
+backend registry will log
+`[secondline] backend "wasabi" skipped: missing WASABI_ACCESS_KEY` on boot.
+That's expected and harmless. Only the backend referenced by
+`SECONDLINE_ACTIVE_BACKEND` needs to be configured.
 
-## 4. Start it
+## 5. Start the container
 
 ```sh
-cd /var/lib/casaos/apps/secondline-staging
+cd /opt/secondline-staging
 docker compose up -d
 docker compose logs -f app
 ```
 
-Expected log lines:
+Expected:
 - `[secondline] backend "wasabi" skipped: missing WASABI_ACCESS_KEY`
 - `Listening on http://0.0.0.0:3000`
 - No SQLite errors
 
-Verify the SHA and healthcheck from the same box:
+Verify on the box loopback:
 
 ```sh
 curl -s http://127.0.0.1:3000/healthz
-# {"ok":true,"sha":"<expected-short-sha>","ts":"..."}
+# {"ok":true,"sha":"<short-sha>","ts":"..."}
 ```
 
-## 5. Bind the Tailscale-fronted hostname with TLS
-
-Two paths, pick one:
-
-**Tailscale Funnel (simplest):**
+## 6. Front it with `tailscale serve --https`
 
 ```sh
 sudo tailscale serve --bg --https=443 http://127.0.0.1:3000
-sudo tailscale funnel 443 on
 ```
 
-This exposes the container on `https://<zima-machine-name>.<your-tailnet>.ts.net`
-with a real Let's Encrypt cert auto-managed by Tailscale. Phones outside the
-tailnet can reach it, which is what you want for the QR scan test.
+This:
+- Provisions a Let's Encrypt cert for `<your-machine>.<tailnet>.ts.net` (if
+  it doesn't already exist; cached after first issuance)
+- Listens on the tailnet interface, port 443
+- Reverse-proxies all requests to the local app on port 3000
+- Runs in the background and persists across `tailscale up`/`down` cycles
 
-**Reverse proxy with a real subdomain (more polish, more work):**
-
-Add an A record `secondline-staging.smile-nola.com` → ZimaBlade's Tailscale
-IP, then put Caddy or Traefik on the box doing TLS-ALPN-01 or DNS-01 cert
-issuance, with `secondline-staging.smile-nola.com` reverse-proxying to
-`127.0.0.1:3000`. Out of scope for this runbook; the Tailscale Funnel path
-covers the smoke test.
-
-## 6. Verify from a phone over Tailscale
-
-Open `https://<the URL you just set up>/admin/login` on your phone:
-
-- Cert should be green (no warning)
-- Log in with `ADMIN_PASSWORD`
-- The build-pill in the top-right of the admin nav shows the short SHA
-  matching what you built locally
-
-If the cert is bad → SW won't register, HEIC conversion test won't work, the
-upload retry queue won't engage. Fix the cert before proceeding.
-
-## 7. Walk through Task 32
-
-Use the staging URL everywhere Task 32 says `secondline.smile-nola.com`.
-Specifically:
-
-- Step 6 (expiry warning): the `sqlite3` UPDATE statement runs against
-  `/var/lib/casaos/apps/secondline-staging/data/secondline.db` on the
-  ZimaBlade (not inside the container — the bind mount makes the file
-  available host-side).
-- Step 6/7 (cron triggers): hit `http://127.0.0.1:3000/api/cron/...` from
-  inside the box (since you didn't expose port 3000 to the LAN), or
-  `https://<staging URL>/api/cron/...` from your dev machine with the
-  bearer token. Both work.
-
-## Tearing it down
+Verify the cert is live from your dev machine (on the tailnet):
 
 ```sh
-cd /var/lib/casaos/apps/secondline-staging
-docker compose down
-# DB and uploads in ./data are preserved. To wipe:
-rm -rf data/
+curl -s https://zimablade.<tailnet>.ts.net/healthz
+# Should return JSON with the SHA, no cert warning
 ```
 
-## Iterating
+If `--https=443` errors with "MagicDNS or HTTPS not enabled," enable HTTPS
+in the tailnet admin: https://login.tailscale.com/admin/dns → "HTTPS
+Certificates" → Enable → wait ~30 seconds → retry.
 
-To deploy a new commit:
+To disable the serve later:
+
+```sh
+sudo tailscale serve --https=443 off
+```
+
+## 7. Open from your laptop and phones
+
+From any device on the tailnet (phones need the Tailscale app installed and
+to be signed in):
+
+```
+https://zimablade.<tailnet>.ts.net/admin/login
+```
+
+Cert is real, no warning. iOS Safari registers the Service Worker. The full
+Task 32 flow is now testable end-to-end.
+
+## 8. Walk through Task 32
+
+From your laptop on the tailnet, open the admin URL. Run Task 32 steps 1-7
+exactly as documented in `docs/plans/2026-05-25-second-line.md`, with these
+adaptations:
+
+- Replace every reference to `https://secondline.smile-nola.com` with
+  `https://zimablade.<tailnet>.ts.net` (or whatever your machine's tailnet
+  hostname is)
+- For step 6 / step 7 cron triggers, run them from the box's loopback to
+  bypass Tailscale serve entirely:
+  ```sh
+  # On the ZimaBlade
+  curl -X POST \
+    -H "Authorization: Bearer $(grep ^SECONDLINE_CRON_TOKEN /opt/secondline-staging/.env | cut -d= -f2)" \
+    http://127.0.0.1:3000/api/cron/reminders
+  ```
+- For the SQLite UPDATE in step 6 (to backdate `expires_at`), run on the
+  ZimaBlade against the bind-mounted DB:
+  ```sh
+  sqlite3 /opt/secondline-staging/data/secondline.db \
+    "UPDATE events SET expires_at = datetime('now','+25 days'), warned_30_at = NULL WHERE id = <TEST-EVENT-ID>"
+  ```
+- Skip step 8 ("tag the release") — tag from prod after the Coolify deploy
+  succeeds, not after staging
+
+## 9. Iterate
+
+To deploy a new commit to staging:
 
 ```sh
 # On dev machine
@@ -211,14 +231,43 @@ docker save secondline-app:staging-latest | gzip | \
   ssh <zima> "gunzip | docker load"
 
 # On the ZimaBlade
-cd /var/lib/casaos/apps/secondline-staging
+cd /opt/secondline-staging
 docker compose up -d --force-recreate
 
-# Verify the new SHA actually deployed
-curl -s http://127.0.0.1:3000/healthz
+# Verify the new SHA actually deployed (from dev machine, via tailscale serve)
+curl -s https://zimablade.<tailnet>.ts.net/healthz
 ```
 
-If the SHA from `/healthz` doesn't match what you expected, the image didn't
-update — most likely the `docker load` skipped because the tag already
-existed at that name. Rebuild with a fresh `staging-$SHA` tag and update
-the compose file's `image:` field.
+If `/healthz` reports the old SHA, the image didn't update. Most common
+cause: `docker load` was a no-op because the tag already existed. Rebuild
+with a fresh `staging-$SHA` tag and update the compose file's `image:`
+field.
+
+## Tearing it down
+
+```sh
+# Stop serving the tailnet endpoint
+sudo tailscale serve --https=443 off
+
+# Stop the container
+cd /opt/secondline-staging
+docker compose down
+
+# Preserve DB:        do nothing further
+# Wipe DB:            sudo rm -rf data/
+# Wipe Wasabi bucket: empty `secondline-app` via Wasabi console, or trigger
+#                     /api/cron/cleanup with all events backdated
+```
+
+## Differences from prod (docs/deploy.md)
+
+| Thing | Staging (ZimaBlade) | Prod (Coolify) |
+|---|---|---|
+| Hostname | `<machine>.<tailnet>.ts.net` | `secondline.smile-nola.com` |
+| TLS | Tailscale-provisioned LE cert (tailnet-only) | Coolify-provisioned LE cert (public) |
+| Reachability | Devices on the tailnet only | Public internet |
+| Wasabi bucket | `secondline-app` | `secondline-prod` |
+| `SECONDLINE_ACTIVE_BACKEND` | `wasabi-staging` | `wasabi` |
+| Cron tasks | Disabled (manual curl) | Two daily scheduled tasks |
+| iPhone HEIC + SW | **Testable** (real cert) | Testable |
+| Deploy mechanism | `docker save` + `docker load` over SSH | Coolify "Force rebuild without cache" |
