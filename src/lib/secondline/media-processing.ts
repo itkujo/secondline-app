@@ -15,13 +15,15 @@
  *
  * Size limits per the decision matrix:
  *   - Photos: 10 MB
- *   - Videos: 50 MB
+ *   - Videos: 200 MB (raised from the spec's 50 MB on 2026-06-12 — phone
+ *     videos routinely exceed 50 MB; uploads buffer fully in RAM, so revisit
+ *     if memory pressure shows up on small deploy targets)
  */
 
 import sharp from 'sharp';
 
-export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;   // 10 MB
-export const MAX_VIDEO_BYTES = 50 * 1024 * 1024;   // 50 MB
+export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;    // 10 MB
+export const MAX_VIDEO_BYTES = 200 * 1024 * 1024;   // 200 MB
 
 export const ACCEPTED_IMAGE_MIME = [
   'image/jpeg', 'image/jpg', 'image/png', 'image/webp',

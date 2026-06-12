@@ -8,8 +8,9 @@
  *
  * Per-file POST (the client loops over a FileList). Single-shot upload —
  * no chunking, no multipart S3 — backed by the service worker for retry
- * on flaky networks. Max body size: 50 MB (videos) / 10 MB (images);
- * processUpload enforces both.
+ * on flaky networks. Max body size: 200 MB (videos) / 10 MB (images);
+ * enforced here per-type with a human-readable 413, and again in
+ * processUpload.
  *
  * Never throws to the client. On any failure returns { ok: false, error }
  * with the right HTTP status, and the service worker retries.
@@ -19,7 +20,7 @@ import type { APIRoute } from 'astro';
 import { randomUUID } from 'node:crypto';
 import { getEventBySlug, markFirstUpload } from '@/lib/secondline/events';
 import { recordAsset } from '@/lib/secondline/assets';
-import { processUpload, isAcceptedMime, isImageMime, MAX_VIDEO_BYTES } from '@/lib/secondline/media-processing';
+import { processUpload, isAcceptedMime, isImageMime, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES } from '@/lib/secondline/media-processing';
 import { getBackend } from '@/lib/secondline/storage/backends';
 import { createS3Adapter } from '@/lib/secondline/storage/s3';
 import { getSseHub } from '@/lib/secondline/sse';
@@ -45,10 +46,14 @@ export const POST: APIRoute = async ({ request }) => {
     const file = form.get('file');
     if (!(file instanceof File)) return json(400, { ok: false, error: 'Missing file' });
     if (file.size === 0) return json(400, { ok: false, error: 'Empty file' });
-    if (file.size > MAX_VIDEO_BYTES) return json(413, { ok: false, error: 'File too large' });
 
     const declaredMime = (file.type || 'application/octet-stream').toLowerCase();
     if (!isAcceptedMime(declaredMime)) return json(415, { ok: false, error: `Unsupported type ${declaredMime}` });
+    const maxBytes = isImageMime(declaredMime) ? MAX_IMAGE_BYTES : MAX_VIDEO_BYTES;
+    if (file.size > maxBytes) {
+      const kind = isImageMime(declaredMime) ? 'Photo' : 'Video';
+      return json(413, { ok: false, error: `${kind} too large (max ${Math.round(maxBytes / 1024 / 1024)} MB)` });
+    }
 
     const uploaderNameRaw = form.get('uploader_name');
     const uploaderName = typeof uploaderNameRaw === 'string' && uploaderNameRaw.trim()

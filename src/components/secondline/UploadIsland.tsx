@@ -46,6 +46,19 @@ function newTileId(): string {
 const DIRECT_MAX_RETRIES = 2;
 const DIRECT_RETRY_BASE_MS = 1500;
 
+// Mirror of the server caps in media-processing.ts (can't import it here —
+// it pulls in sharp). Checked before upload so guests get an instant,
+// readable "too large" instead of a slow 413.
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
+
+function oversizeError(file: File): string | null {
+  const isVideo = file.type.toLowerCase().startsWith('video/');
+  const max = isVideo ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+  if (file.size <= max) return null;
+  return `${isVideo ? 'Video' : 'Photo'} too large (max ${Math.round(max / 1024 / 1024)} MB)`;
+}
+
 function isHeic(file: File): boolean {
   if (HEIC_MIMES.has(file.type.toLowerCase())) return true;
   // Some iOS Safari builds set type='' — fall back to extension sniff
@@ -146,14 +159,18 @@ export default function UploadIsland({ slug }: Props) {
     const trimmed = name.trim();
     if (trimmed) localStorage.setItem(NAME_STORAGE_KEY, trimmed);
 
-    const newTiles: Tile[] = files.map(f => ({
-      id: newTileId(),
-      name: f.name,
-      size: f.size,
-      previewUrl: URL.createObjectURL(f),
-      state: isHeic(f) ? 'preparing' : 'queued',
-      attempt: 0,
-    }));
+    const newTiles: Tile[] = files.map(f => {
+      const tooBig = oversizeError(f);
+      return {
+        id: newTileId(),
+        name: f.name,
+        size: f.size,
+        previewUrl: URL.createObjectURL(f),
+        state: tooBig ? 'failed' as TileState : isHeic(f) ? 'preparing' as TileState : 'queued' as TileState,
+        attempt: 0,
+        error: tooBig ?? undefined,
+      };
+    });
     // Show 'preparing' tile state for the duration of HEIC conversion (if any)
     setTiles(prev => [...newTiles, ...prev]);
 
@@ -162,6 +179,7 @@ export default function UploadIsland({ slug }: Props) {
     const sw = await getSw();
     for (let i = 0; i < files.length; i++) {
       const tile = newTiles[i];
+      if (tile.state === 'failed') continue; // rejected client-side (too large)
       try {
         const ready = await maybeConvertHeic(files[i]);
         if (sw) {
@@ -250,7 +268,14 @@ export default function UploadIsland({ slug }: Props) {
                   {t.state === 'preparing' && 'Preparing…'}
                 </>
               )}
-              {t.state === 'failed' && '!'}
+              {t.state === 'failed' && (
+                <span style={{ padding: '0 8px', textAlign: 'center' }}>
+                  <span style={{ color: '#e08585', fontSize: 18 }}>!</span>
+                  <span style={{ display: 'block', fontSize: 11, fontWeight: 500, marginTop: 2 }}>
+                    {t.error ?? 'Upload failed'}
+                  </span>
+                </span>
+              )}
             </div>
           </li>
         ))}
