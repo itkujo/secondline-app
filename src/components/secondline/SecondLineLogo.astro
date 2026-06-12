@@ -1,0 +1,56 @@
+---
+/**
+ * Second Line wordmark.
+ *
+ * A text logo (deliberately NOT script — it pairs with, rather than mimics,
+ * the Smile NOLA gold script): condensed uppercase caps with wide tracking and
+ * a gold "double underline" — a literal nod to the New Orleans second-line
+ * parade (two lines). Real selectable text, crisp at any size; the underline
+ * thicknesses/gaps are em-based so they scale with `size`.
+ *
+ * Requires the Oswald font to be loaded by the host page (the home page adds
+ * it); falls back to a condensed system sans otherwise.
+ */
+interface Props {
+  /** Wordmark font-size as any CSS length. Underlines scale with it. */
+  size?: string;
+  /** Extra class(es) on the root. */
+  class?: string;
+}
+const { size = '1.5rem', class: className = '' } = Astro.props;
+---
+<span class:list={['sl-logo', className]} style={`--sl-size:${size}`}>
+  <span class="sl-text">Second Line</span>
+</span>
+
+<style>
+  .sl-logo {
+    display: inline-block;
+    font-family: 'Oswald', 'Arial Narrow', 'Helvetica Neue Condensed', system-ui, sans-serif;
+    font-weight: 600;
+    font-size: var(--sl-size);
+    line-height: 1;
+    text-transform: uppercase;
+    letter-spacing: 0.11em;
+    color: #f5f3ee;
+    white-space: nowrap;
+  }
+  .sl-text {
+    display: inline-block;
+    position: relative;
+    /* trailing tracking adds phantom width on the right; trim it so the
+       underline reads as centered under the letters */
+    margin-right: -0.11em;
+    padding-bottom: 0.2em;
+    border-bottom: 0.09em solid #d4af37;   /* thick top rule */
+  }
+  .sl-text::after {                          /* thin bottom rule + gap */
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -0.16em;
+    height: 0.035em;
+    background: #d4af37;
+  }
+</style>

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 190" role="img" aria-label="Second Line">
+  <!-- Text logo (non-script): condensed uppercase caps with a gold double
+       underline — a nod to the New Orleans second-line parade. Uses Oswald
+       when available, falling back to a condensed system sans. For print or
+       guaranteed cross-system fidelity, convert the text to outlines. -->
+  <style>
+    .wm { font-family: 'Oswald','Arial Narrow','Helvetica Neue',sans-serif;
+          font-weight: 600; font-size: 96px; letter-spacing: 10px; }
+  </style>
+  <text class="wm" x="324" y="104" text-anchor="middle" fill="#F5F3EE">SECOND LINE</text>
+  <rect x="48" y="132" width="544" height="7"   rx="1" fill="#D4AF37"/>
+  <rect x="48" y="150" width="544" height="3.2" rx="1" fill="#D4AF37"/>
+</svg>
