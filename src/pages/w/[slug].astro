@@ -71,7 +71,7 @@ const qrSvg = showQr ? await renderQrSvg(`${base}/u/${slug}`, { size: 180 }) : n
     <div class="wall-badge">
       <span class="heart">♥</span>
       <span>Made with</span>
-      <img src="/smile-nola-logo.svg" alt="Smile NOLA" />
+      <span class="brand">Smile NOLA</span>
     </div>
     {/* is:global — Astro's scoped-style hash does not get applied to these
         conditionally rendered overlays, so scoped selectors silently never
@@ -92,7 +92,8 @@ const qrSvg = showQr ? await renderQrSvg(`${base}/u/${slug}`, { size: 180 }) : n
                     padding: 0.55em 1em; font-size: clamp(13px, 1.2vw, 22px); }
       .wall-badge .heart { color: #d4af37; font-size: 1.1em; line-height: 1; }
       .wall-badge span { color: #f8f4ea; white-space: nowrap; }
-      .wall-badge img { height: 1.4em; display: block; }
+      .wall-badge .brand { color: #d4af37; font-family: Georgia, serif; font-weight: 700;
+                           letter-spacing: 0.06em; }
     </style>
   </body>
 </html>
