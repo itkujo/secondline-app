@@ -27,6 +27,12 @@ interface Props { slug: string; }
 
 const NAME_STORAGE_KEY = 'sn_uploader_name';
 
+const SPINNER_STYLE: React.CSSProperties = {
+  width: 22, height: 22, boxSizing: 'border-box', borderRadius: '50%',
+  border: '3px solid rgba(255,255,255,0.25)', borderTopColor: '#d4af37',
+  animation: 'sn-spin 0.8s linear infinite',
+};
+
 const HEIC_MIMES = new Set(['image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence']);
 
 function isHeic(file: File): boolean {
@@ -134,6 +140,7 @@ export default function UploadIsland({ slug }: Props) {
 
   return (
     <div>
+      <style>{'@keyframes sn-spin { to { transform: rotate(360deg) } }'}</style>
       <label style={{ display: 'block', fontSize: 13, color: '#b8b2a5', marginBottom: 6 }}>
         Your name (optional)
         <input
@@ -178,12 +185,16 @@ export default function UploadIsland({ slug }: Props) {
                                   overflow: 'hidden', background: '#111' }}>
             <img src={t.previewUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover',
                                                     filter: t.state === 'ok' ? 'none' : 'brightness(0.65)' }} />
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', gap: 6,
+                          alignItems: 'center', justifyContent: 'center',
                           color: '#fff', fontSize: 13, fontWeight: 700, textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}>
               {t.state === 'ok' && '✓'}
-              {t.state === 'uploading' && '…'}
-              {t.state === 'preparing' && 'Preparing…'}
-              {t.state === 'queued' && '·'}
+              {(t.state === 'uploading' || t.state === 'queued' || t.state === 'preparing') && (
+                <>
+                  <span style={SPINNER_STYLE} aria-label="Uploading" role="status" />
+                  {t.state === 'preparing' && 'Preparing…'}
+                </>
+              )}
               {t.state === 'failed' && '!'}
             </div>
           </li>
