@@ -22,6 +22,11 @@ export interface EventRow {
   warned_30_at: string | null;
   wall_dwell_ms: number;              // ms each photo stays on the wall
   wall_crossfade_ms: number;          // ms of crossfade between wall items
+  wall_video_max_ms: number;          // ms cap for video playback on the wall
+  wall_video_full: number;            // 0/1 — play videos to the end (ignores cap)
+  wall_hide_bg: number;               // 0/1 — hide the blurred scrolling background
+  wall_hide_qr: number;               // 0/1 — hide the upload-QR overlay
+  wall_hide_caption: number;          // 0/1 — hide "Shared by <name>" captions
   created_at: string;
 }
 

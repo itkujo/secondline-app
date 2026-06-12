@@ -60,6 +60,11 @@ export function bootstrapSchema(db: Db): void {
       warned_30_at TEXT,
       wall_dwell_ms INTEGER NOT NULL DEFAULT 5000,
       wall_crossfade_ms INTEGER NOT NULL DEFAULT 400,
+      wall_video_max_ms INTEGER NOT NULL DEFAULT 30000,
+      wall_video_full INTEGER NOT NULL DEFAULT 0,
+      wall_hide_bg INTEGER NOT NULL DEFAULT 0,
+      wall_hide_qr INTEGER NOT NULL DEFAULT 0,
+      wall_hide_caption INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
     );
     CREATE INDEX IF NOT EXISTS idx_events_status  ON events(status);
@@ -86,6 +91,11 @@ export function bootstrapSchema(db: Db): void {
 
   addColumnIfMissing(db, 'events', 'wall_dwell_ms', `wall_dwell_ms INTEGER NOT NULL DEFAULT 5000`);
   addColumnIfMissing(db, 'events', 'wall_crossfade_ms', `wall_crossfade_ms INTEGER NOT NULL DEFAULT 400`);
+  addColumnIfMissing(db, 'events', 'wall_video_max_ms', `wall_video_max_ms INTEGER NOT NULL DEFAULT 30000`);
+  addColumnIfMissing(db, 'events', 'wall_video_full', `wall_video_full INTEGER NOT NULL DEFAULT 0`);
+  addColumnIfMissing(db, 'events', 'wall_hide_bg', `wall_hide_bg INTEGER NOT NULL DEFAULT 0`);
+  addColumnIfMissing(db, 'events', 'wall_hide_qr', `wall_hide_qr INTEGER NOT NULL DEFAULT 0`);
+  addColumnIfMissing(db, 'events', 'wall_hide_caption', `wall_hide_caption INTEGER NOT NULL DEFAULT 0`);
 }
 
 function addColumnIfMissing(db: Db, table: string, column: string, ddl: string): void {

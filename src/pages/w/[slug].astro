@@ -10,6 +10,8 @@ import WallIsland from '@/components/secondline/WallIsland';
 import { getEventBySlug } from '@/lib/secondline/events';
 import { listAssetsForEvent } from '@/lib/secondline/assets';
 import { isValidSlugShape } from '@/lib/secondline/slugs';
+import { renderQrSvg } from '@/lib/secondline/qr';
+import { getEnv } from '@/lib/env';
 import type { PublicAsset, AssetRow } from '@/lib/secondline/types';
 
 export const prerender = false;
@@ -34,6 +36,10 @@ const initialAssets: PublicAsset[] = rows.map((r: AssetRow) => ({
 }));
 const initialSince = rows.length ? rows[rows.length - 1].uploaded_at : new Date().toISOString();
 const isKiosk = Astro.url.searchParams.get('kiosk') === '1';
+
+const showQr = !event.wall_hide_qr;
+const base = getEnv('SECONDLINE_PUBLIC_URL') || 'https://secondline.smile-nola.com';
+const qrSvg = showQr ? await renderQrSvg(`${base}/u/${slug}`, { size: 120 }) : null;
 ---
 <!doctype html>
 <html lang="en">
@@ -52,7 +58,22 @@ const isKiosk = Astro.url.searchParams.get('kiosk') === '1';
   <body>
     <div id="wall-root">
       <WallIsland client:load slug={slug} initialAssets={initialAssets} initialSince={initialSince} kiosk={isKiosk}
-                  dwellMs={event.wall_dwell_ms} crossfadeMs={event.wall_crossfade_ms} />
+                  dwellMs={event.wall_dwell_ms} crossfadeMs={event.wall_crossfade_ms}
+                  videoMaxMs={event.wall_video_max_ms} videoFull={!!event.wall_video_full}
+                  hideBg={!!event.wall_hide_bg} hideCaption={!!event.wall_hide_caption} />
     </div>
+    {showQr && (
+      <div class="wall-qr">
+        <p>Scan to add photos!</p>
+        <div class="wall-qr-code" set:html={qrSvg}></div>
+      </div>
+    )}
+    <style>
+      .wall-qr { position: fixed; left: 20px; bottom: 20px; z-index: 10; background: #fff;
+                 border-radius: 10px; padding: 10px 12px 8px; text-align: center;
+                 box-shadow: 0 4px 18px rgba(0,0,0,0.5); }
+      .wall-qr p { margin: 0 0 6px; color: #111; font-size: 12px; font-weight: 700; }
+      .wall-qr-code :global(svg) { width: 110px; height: 110px; display: block; margin: 0 auto; }
+    </style>
   </body>
 </html>

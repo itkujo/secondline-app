@@ -75,9 +75,23 @@ export function setPicTimeUrl(eventId: number, url: string | null): void {
   getDb().prepare(`UPDATE events SET pictime_gallery_url = ? WHERE id = ?`).run(url, eventId);
 }
 
-export function setWallSettings(eventId: number, dwellMs: number, crossfadeMs: number): void {
-  getDb().prepare(`UPDATE events SET wall_dwell_ms = ?, wall_crossfade_ms = ? WHERE id = ?`)
-    .run(dwellMs, crossfadeMs, eventId);
+export interface WallSettings {
+  wall_dwell_ms: number;
+  wall_crossfade_ms: number;
+  wall_video_max_ms: number;
+  wall_video_full: number;     // 0/1
+  wall_hide_bg: number;        // 0/1
+  wall_hide_qr: number;        // 0/1
+  wall_hide_caption: number;   // 0/1
+}
+
+export function setWallSettings(eventId: number, s: WallSettings): void {
+  getDb().prepare(`
+    UPDATE events SET wall_dwell_ms = ?, wall_crossfade_ms = ?, wall_video_max_ms = ?,
+                      wall_video_full = ?, wall_hide_bg = ?, wall_hide_qr = ?, wall_hide_caption = ?
+    WHERE id = ?
+  `).run(s.wall_dwell_ms, s.wall_crossfade_ms, s.wall_video_max_ms,
+         s.wall_video_full, s.wall_hide_bg, s.wall_hide_qr, s.wall_hide_caption, eventId);
 }
 
 export function setBackend(eventId: number, backendId: string): void {

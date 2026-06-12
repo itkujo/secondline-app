@@ -12,6 +12,8 @@ function event(overrides: Partial<EventRow> = {}): EventRow {
     expires_at: null, status: 'active',
     first_upload_at: null, warned_30_at: null,
     wall_dwell_ms: 5000, wall_crossfade_ms: 400,
+    wall_video_max_ms: 30000, wall_video_full: 0,
+    wall_hide_bg: 0, wall_hide_qr: 0, wall_hide_caption: 0,
     created_at: '2026-01-01T00:00:00Z',
     ...overrides,
   };

@@ -71,22 +71,33 @@ const justCreated = Astro.url.searchParams.get('created') === '1';
     <section class="card">
       <h2>Wall display</h2>
       <p style="color:#b8b2a5;font-size:13px;margin:0 0 8px;">
-        How long each photo stays on the wall, and how fast it crossfades to the next.
+        Timing and overlays for this event's wall. Walls pick changes up on reload.
       </p>
-      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end;">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;align-items:end;">
         <label style="font-size:12px;color:#b8b2a5;">
           Photo duration (s)
           <input id="wall-dwell-input" type="number" min="1" max="120" step="0.5"
                  value={event.wall_dwell_ms / 1000} class="text-input" style="margin-top:4px;" />
         </label>
         <label style="font-size:12px;color:#b8b2a5;">
+          Video max (s)
+          <input id="wall-video-max-input" type="number" min="1" max="600" step="1"
+                 value={event.wall_video_max_ms / 1000} class="text-input" style="margin-top:4px;" />
+        </label>
+        <label style="font-size:12px;color:#b8b2a5;">
           Crossfade (ms)
           <input id="wall-crossfade-input" type="number" min="100" max="5000" step="50"
                  value={event.wall_crossfade_ms} class="text-input" style="margin-top:4px;" />
         </label>
-        <button id="wall-save" class="chip">Save</button>
       </div>
-      <span id="wall-status" style="color:#b8b2a5;font-size:12px;margin-top:6px;display:block;"></span>
+      <div style="display:grid;gap:6px;margin-top:10px;font-size:13px;color:#cfc7b3;">
+        <label><input type="checkbox" id="wall-video-full" checked={!!event.wall_video_full} /> Play videos full length (ignores video max)</label>
+        <label><input type="checkbox" id="wall-hide-bg" checked={!!event.wall_hide_bg} /> Hide background side images</label>
+        <label><input type="checkbox" id="wall-hide-qr" checked={!!event.wall_hide_qr} /> Hide QR code on the wall</label>
+        <label><input type="checkbox" id="wall-hide-caption" checked={!!event.wall_hide_caption} /> Hide "Shared by" captions</label>
+      </div>
+      <p style="margin:12px 0 0;"><button id="wall-save" class="chip">Save</button>
+      <span id="wall-status" style="color:#b8b2a5;font-size:12px;margin-left:8px;"></span></p>
     </section>
 
     <section class="card">
@@ -166,11 +177,20 @@ const justCreated = Astro.url.searchParams.get('created') === '1';
     document.getElementById('wall-save')?.addEventListener('click', async () => {
       const status = document.getElementById('wall-status');
       const dwellS = parseFloat(document.getElementById('wall-dwell-input').value);
+      const videoMaxS = parseFloat(document.getElementById('wall-video-max-input').value);
       const crossfade = parseInt(document.getElementById('wall-crossfade-input').value, 10);
       status.textContent = 'Saving…';
       const res = await fetch(`/api/admin/events/${eventId}`, {
         method: 'PATCH', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ wall_dwell_ms: Math.round(dwellS * 1000), wall_crossfade_ms: crossfade }),
+        body: JSON.stringify({
+          wall_dwell_ms: Math.round(dwellS * 1000),
+          wall_crossfade_ms: crossfade,
+          wall_video_max_ms: Math.round(videoMaxS * 1000),
+          wall_video_full: document.getElementById('wall-video-full').checked,
+          wall_hide_bg: document.getElementById('wall-hide-bg').checked,
+          wall_hide_qr: document.getElementById('wall-hide-qr').checked,
+          wall_hide_caption: document.getElementById('wall-hide-caption').checked,
+        }),
       });
       const j = await res.json().catch(() => ({}));
       status.textContent = res.ok ? 'Saved ✓ (walls pick it up on reload)' : (j.error || 'Failed');

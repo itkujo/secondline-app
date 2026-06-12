@@ -27,15 +27,24 @@ interface Props {
   kiosk: boolean;
   dwellMs?: number;        // per-event admin setting; ms each photo shows
   crossfadeMs?: number;    // per-event admin setting; ms of crossfade
+  videoMaxMs?: number;     // per-event admin setting; video playback cap
+  videoFull?: boolean;     // per-event admin setting; play videos to the end
+  hideBg?: boolean;        // per-event admin setting; hide blurred background
+  hideCaption?: boolean;   // per-event admin setting; hide uploader captions
 }
 
 const PHOTO_DWELL_MS = 5000;
 const VIDEO_MAX_MS = 30_000;
 const CROSSFADE_MS = 400;
 const CONTROLS_HIDE_MS = 3000;
+// videoFull plays to the video's `ended` event; this timer is only the
+// safety net for stalled/broken streams so the wall can never freeze.
+const VIDEO_FULL_FAILSAFE_MS = 10 * 60_000;
 
 export default function WallIsland({ slug, initialAssets, initialSince, kiosk,
-                                     dwellMs = PHOTO_DWELL_MS, crossfadeMs = CROSSFADE_MS }: Props) {
+                                     dwellMs = PHOTO_DWELL_MS, crossfadeMs = CROSSFADE_MS,
+                                     videoMaxMs = VIDEO_MAX_MS, videoFull = false,
+                                     hideBg = false, hideCaption = false }: Props) {
   const [assets, setAssets] = useState<PublicAsset[]>(initialAssets);
   const [heroIdx, setHeroIdx] = useState(0);
   const [prevIdx, setPrevIdx] = useState<number | null>(null);
@@ -97,20 +106,28 @@ export default function WallIsland({ slug, initialAssets, initialSince, kiosk,
   }, [slug]);
 
   // --- Rotation ---
+  function advance() {
+    if (rotationTimer.current) clearTimeout(rotationTimer.current);
+    setPrevIdx(heroIdx);
+    setHeroIdx(i => (i + 1) % assets.length);
+    setTimeout(() => setPrevIdx(null), crossfadeMs);
+  }
+
   useEffect(() => {
     if (assets.length === 0) return;
     const current = assets[heroIdx % assets.length];
     let dwell = dwellMs;
     if (current.mime_type.startsWith('video/')) {
-      dwell = current.duration_ms ? Math.min(current.duration_ms, VIDEO_MAX_MS) : VIDEO_MAX_MS;
+      // duration_ms is null in v1 (no server-side probe), so the cap is the
+      // effective dwell; with videoFull the <video>'s ended/error events
+      // advance instead and the timer is just a failsafe.
+      dwell = videoFull
+        ? VIDEO_FULL_FAILSAFE_MS
+        : (current.duration_ms ? Math.min(current.duration_ms, videoMaxMs) : videoMaxMs);
     }
-    rotationTimer.current = setTimeout(() => {
-      setPrevIdx(heroIdx);
-      setHeroIdx(i => (i + 1) % assets.length);
-      setTimeout(() => setPrevIdx(null), crossfadeMs);
-    }, dwell);
+    rotationTimer.current = setTimeout(advance, dwell);
     return () => { if (rotationTimer.current) clearTimeout(rotationTimer.current); };
-  }, [heroIdx, assets, dwellMs, crossfadeMs]);
+  }, [heroIdx, assets, dwellMs, crossfadeMs, videoMaxMs, videoFull]);
 
   // --- Controls auto-hide ---
   useEffect(() => {
@@ -148,6 +165,7 @@ export default function WallIsland({ slug, initialAssets, initialSince, kiosk,
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'linear-gradient(180deg,#050505 0%,#1a0f1f 50%,#050505 100%)', overflow: 'hidden' }}>
       {/* --- Background scrolling thumbnails --- */}
+      {!hideBg && (
       <div aria-hidden="true" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.18, filter: 'blur(36px) saturate(1.4)' }}>
         <div style={{ position: 'absolute', left: 0, right: 0, top: 0, willChange: 'transform',
                       animation: 'sn-bgscroll 90s linear infinite',
@@ -160,6 +178,7 @@ export default function WallIsland({ slug, initialAssets, initialSince, kiosk,
           )}
         </div>
       </div>
+      )}
 
       {/* --- Hero region --- */}
       <div style={{ position: 'absolute', inset: 0, padding: '10% 25%', boxSizing: 'border-box',
@@ -170,11 +189,20 @@ export default function WallIsland({ slug, initialAssets, initialSince, kiosk,
             content area so maxWidth/maxHeight:100% means "inside the padding". */}
         <div style={{ position: 'relative', width: '100%', height: '100%' }}>
           {prev && <Hero key={`prev-${prev.id}`} asset={prev} crossfadeMs={crossfadeMs} fadingOut />}
-          {hero && <Hero key={`cur-${hero.id}`} asset={hero} crossfadeMs={crossfadeMs} videoRef={heroVideoRef} />}
+          {hero && <Hero key={`cur-${hero.id}`} asset={hero} crossfadeMs={crossfadeMs} videoRef={heroVideoRef}
+                         onVideoDone={videoFull ? advance : undefined} />}
           {!hero && (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
                           justifyContent: 'center', textAlign: 'center', color: '#b8b2a5' }}>
               Waiting for the first upload…
+            </div>
+          )}
+          {hero?.uploader_name && !hideCaption && (
+            <div style={{ position: 'absolute', left: 0, right: 0, bottom: '-7%', textAlign: 'center',
+                          color: '#f8f4ea', fontSize: 'clamp(14px, 1.6vw, 22px)',
+                          textShadow: '0 1px 4px rgba(0,0,0,0.8)', opacity: 0.9,
+                          transition: `opacity ${crossfadeMs}ms ease-in-out`, pointerEvents: 'none' }}>
+              Shared by {hero.uploader_name}
             </div>
           )}
         </div>
@@ -201,7 +229,11 @@ export default function WallIsland({ slug, initialAssets, initialSince, kiosk,
   );
 }
 
-function Hero({ asset, crossfadeMs, fadingOut, videoRef }: { asset: PublicAsset; crossfadeMs: number; fadingOut?: boolean; videoRef?: React.MutableRefObject<HTMLVideoElement | null> }) {
+function Hero({ asset, crossfadeMs, fadingOut, videoRef, onVideoDone }: {
+  asset: PublicAsset; crossfadeMs: number; fadingOut?: boolean;
+  videoRef?: React.MutableRefObject<HTMLVideoElement | null>;
+  onVideoDone?: () => void;   // set when videos play full-length: advance on ended/error
+}) {
   const style: React.CSSProperties = {
     position: 'absolute',
     inset: 0, margin: 'auto',          // center within the padded content area
@@ -215,7 +247,9 @@ function Hero({ asset, crossfadeMs, fadingOut, videoRef }: { asset: PublicAsset;
     return (
       <video ref={el => { if (videoRef) videoRef.current = el; }}
              src={asset.src} autoPlay playsInline style={style}
-             onCanPlay={e => { (e.target as HTMLVideoElement).play().catch(() => {}); }} />
+             onCanPlay={e => { (e.target as HTMLVideoElement).play().catch(() => {}); }}
+             onEnded={fadingOut ? undefined : onVideoDone}
+             onError={fadingOut ? undefined : onVideoDone} />
     );
   }
   return <img src={asset.src} alt="" style={style} />;
