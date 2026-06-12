@@ -164,24 +164,18 @@ export default function WallIsland({ slug, initialAssets, initialSince, kiosk,
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'linear-gradient(180deg,#050505 0%,#1a0f1f 50%,#050505 100%)', overflow: 'hidden' }}>
-      {/* --- Background scrolling thumbnails --- */}
+      {/* --- Side image strips (Kululu-style): sharp, dimmed photo columns
+             scrolling slowly down each edge. The admin "Hide side images"
+             toggle removes them. --- */}
       {!hideBg && (
-      <div aria-hidden="true" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.18, filter: 'blur(36px) saturate(1.4)' }}>
-        <div style={{ position: 'absolute', left: 0, right: 0, top: 0, willChange: 'transform',
-                      animation: 'sn-bgscroll 90s linear infinite',
-                      display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0 }}>
-          {Array.from({ length: 3 }).flatMap((_, dup) =>
-            bgThumbs.map(a => (
-              <div key={`${dup}-${a.id}`} style={{ aspectRatio: '1 / 1', backgroundImage: `url(${a.thumb})`,
-                                                   backgroundSize: 'cover', backgroundPosition: 'center' }} />
-            ))
-          )}
-        </div>
-      </div>
+        <>
+          <SideStrip side="left" thumbs={bgThumbs} />
+          <SideStrip side="right" thumbs={bgThumbs} />
+        </>
       )}
 
       {/* --- Hero region --- */}
-      <div style={{ position: 'absolute', inset: 0, padding: '10% 25%', boxSizing: 'border-box',
+      <div style={{ position: 'absolute', inset: 0, padding: '6% 18%', boxSizing: 'border-box',
                     display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {/* Absolutely-positioned heroes measure against their containing block's
             PADDING box, which would let large media ignore the 10%/25% spec
@@ -198,7 +192,7 @@ export default function WallIsland({ slug, initialAssets, initialSince, kiosk,
             </div>
           )}
           {hero?.uploader_name && !hideCaption && (
-            <div style={{ position: 'absolute', left: 0, right: 0, bottom: '-7%', textAlign: 'center',
+            <div style={{ position: 'absolute', left: 0, right: 0, bottom: '-5%', textAlign: 'center',
                           color: '#f8f4ea', fontSize: 'clamp(14px, 1.6vw, 22px)',
                           textShadow: '0 1px 4px rgba(0,0,0,0.8)', opacity: 0.9,
                           transition: `opacity ${crossfadeMs}ms ease-in-out`, pointerEvents: 'none' }}>
@@ -225,6 +219,29 @@ export default function WallIsland({ slug, initialAssets, initialSince, kiosk,
           to   { transform: translateY(-33.333%); }
         }
       `}</style>
+    </div>
+  );
+}
+
+function SideStrip({ side, thumbs }: { side: 'left' | 'right'; thumbs: PublicAsset[] }) {
+  if (thumbs.length === 0) return null;
+  const ordered = side === 'right' ? [...thumbs].reverse() : thumbs;
+  return (
+    <div aria-hidden="true" style={{ position: 'absolute', top: 0, bottom: 0, [side]: 0, width: '13%',
+                                     overflow: 'hidden', pointerEvents: 'none' }}>
+      {/* Content is tripled and the keyframe travels -33.333%, so the loop is seamless.
+          Different durations per side keep the columns from moving in lockstep. */}
+      <div style={{ position: 'absolute', left: 0, right: 0, top: 0, willChange: 'transform',
+                    animation: `sn-bgscroll ${side === 'left' ? 90 : 110}s linear infinite`,
+                    display: 'grid', gap: 6, filter: 'brightness(0.55)' }}>
+        {Array.from({ length: 3 }).flatMap((_, dup) =>
+          ordered.map(a => (
+            <div key={`${dup}-${a.id}`} style={{ aspectRatio: '3 / 4', backgroundImage: `url(${a.thumb})`,
+                                                 backgroundSize: 'cover', backgroundPosition: 'center',
+                                                 borderRadius: 6 }} />
+          ))
+        )}
+      </div>
     </div>
   );
 }

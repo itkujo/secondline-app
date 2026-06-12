@@ -39,7 +39,7 @@ const isKiosk = Astro.url.searchParams.get('kiosk') === '1';
 
 const showQr = !event.wall_hide_qr;
 const base = getEnv('SECONDLINE_PUBLIC_URL') || 'https://secondline.smile-nola.com';
-const qrSvg = showQr ? await renderQrSvg(`${base}/u/${slug}`, { size: 120 }) : null;
+const qrSvg = showQr ? await renderQrSvg(`${base}/u/${slug}`, { size: 180 }) : null;
 ---
 <!doctype html>
 <html lang="en">
@@ -64,16 +64,27 @@ const qrSvg = showQr ? await renderQrSvg(`${base}/u/${slug}`, { size: 120 }) : n
     </div>
     {showQr && (
       <div class="wall-qr">
-        <p>Scan to add photos!</p>
+        <p>Scan to view<br />or add photos!</p>
         <div class="wall-qr-code" set:html={qrSvg}></div>
       </div>
     )}
-    <style>
-      .wall-qr { position: fixed; left: 20px; bottom: 20px; z-index: 10; background: #fff;
-                 border-radius: 10px; padding: 10px 12px 8px; text-align: center;
+    <div class="wall-badge">
+      <span>Made with</span>
+      <img src="/smile-nola-logo.svg" alt="Smile NOLA" />
+    </div>
+    {/* is:global — Astro's scoped-style hash does not get applied to these
+        conditionally rendered overlays, so scoped selectors silently never
+        match (the QR rendered unstyled and was painted over by the wall). */}
+    <style is:global>
+      .wall-qr { position: fixed; left: 24px; bottom: 24px; z-index: 10; background: #fff;
+                 border-radius: 12px; padding: 12px 14px 10px; text-align: center;
                  box-shadow: 0 4px 18px rgba(0,0,0,0.5); }
-      .wall-qr p { margin: 0 0 6px; color: #111; font-size: 12px; font-weight: 700; }
-      .wall-qr-code :global(svg) { width: 110px; height: 110px; display: block; margin: 0 auto; }
+      .wall-qr p { margin: 0 0 8px; color: #111; font-size: 14px; font-weight: 700; line-height: 1.25; }
+      .wall-qr-code svg { width: 170px; height: 170px; display: block; margin: 0 auto; }
+      .wall-badge { position: fixed; top: 16px; left: 16px; z-index: 10; display: flex; align-items: center;
+                    gap: 7px; background: rgba(0,0,0,0.55); border-radius: 999px; padding: 7px 14px; }
+      .wall-badge span { color: #f8f4ea; font-size: 12px; }
+      .wall-badge img { height: 16px; display: block; }
     </style>
   </body>
 </html>
