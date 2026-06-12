@@ -47,9 +47,10 @@ export function createS3Adapter(backend: StorageBackend): S3Adapter {
     forcePathStyle: backend.forcePathStyle,
   });
 
-  // Exposed for tests; not part of the public interface. We deliberately
-  // reference client.send so test mocks of the SDK can replace it.
-  const _send = (client as unknown as { send: (c: unknown) => Promise<unknown> }).send;
+  // Exposed for tests; not part of the public interface. Bound to the client
+  // because @smithy/core's send() reads `this.config` — a detached reference
+  // crashes with "Cannot read properties of undefined (reading 'config')".
+  const _send = (client as unknown as { send: (c: unknown) => Promise<unknown> }).send.bind(client);
 
   const adapter: S3Adapter & { _send: typeof _send } = {
     _send,

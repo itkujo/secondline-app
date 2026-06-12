@@ -35,9 +35,16 @@ describe('s3 adapter', () => {
     }));
   });
 
+  // adapter._send is now bound, which strips vi.fn's mock API — reach the
+  // shared send mock through the mocked S3Client instance instead.
+  function mockSend(): ReturnType<typeof vi.fn> {
+    const results = vi.mocked(awsMock.S3Client).mock.results;
+    return (results[results.length - 1]!.value as { send: ReturnType<typeof vi.fn> }).send;
+  }
+
   it('putObject sends a PutObjectCommand with bucket/key/body/contentType', async () => {
     const adapter = createS3Adapter(backend);
-    const send = (adapter as unknown as { _send: ReturnType<typeof vi.fn> })._send;
+    const send = mockSend();
     send.mockResolvedValueOnce({});
     await adapter.putObject({ key: 'a/b.jpg', body: Buffer.from('x'), contentType: 'image/jpeg' });
     expect(awsMock.PutObjectCommand).toHaveBeenCalledWith({
@@ -49,7 +56,7 @@ describe('s3 adapter', () => {
 
   it('getObjectStream returns the SDK response Body', async () => {
     const adapter = createS3Adapter(backend);
-    const send = (adapter as unknown as { _send: ReturnType<typeof vi.fn> })._send;
+    const send = mockSend();
     const fakeStream = { pipe: vi.fn() };
     send.mockResolvedValueOnce({ Body: fakeStream, ContentType: 'image/jpeg', ContentLength: 999 });
     const r = await adapter.getObjectStream('a/b.jpg');
