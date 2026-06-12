@@ -179,7 +179,7 @@ export default function WallIsland({ slug, initialAssets, initialSince, kiosk,
       )}
 
       {/* --- Hero region --- */}
-      <div style={{ position: 'absolute', inset: 0, padding: '2% 13%', boxSizing: 'border-box',
+      <div style={{ position: 'absolute', inset: 0, padding: '2% 17%', boxSizing: 'border-box',
                     display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {/* Absolutely-positioned heroes measure against their containing block's
             PADDING box, which would let large media ignore the 10%/25% spec
