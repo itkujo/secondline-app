@@ -164,18 +164,22 @@ export default function WallIsland({ slug, initialAssets, initialSince, kiosk,
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'linear-gradient(180deg,#050505 0%,#1a0f1f 50%,#050505 100%)', overflow: 'hidden' }}>
-      {/* --- Side image strips (Kululu-style): sharp, dimmed photo columns
-             scrolling slowly down each edge. The admin "Hide side images"
-             toggle removes them. --- */}
+      {/* --- Backdrop: blurred blow-up of the current photo, crossfading with
+             the hero (Kululu behavior). Thumbs are plenty at 48px blur. --- */}
+      {prev?.mime_type.startsWith('image/') && <Backdrop key={`bp-${prev.id}`} thumb={prev.thumb} crossfadeMs={crossfadeMs} fadingOut />}
+      {hero?.mime_type.startsWith('image/') && <Backdrop key={`bc-${hero.id}`} thumb={hero.thumb} crossfadeMs={crossfadeMs} />}
+
+      {/* --- Side images: floating photo cards drifting up the side gutters.
+             The admin "Hide side images" toggle removes them. --- */}
       {!hideBg && (
         <>
-          <SideStrip side="left" thumbs={bgThumbs} />
-          <SideStrip side="right" thumbs={bgThumbs} />
+          <SideCards side="left" thumbs={bgThumbs} />
+          <SideCards side="right" thumbs={bgThumbs} />
         </>
       )}
 
       {/* --- Hero region --- */}
-      <div style={{ position: 'absolute', inset: 0, padding: '6% 18%', boxSizing: 'border-box',
+      <div style={{ position: 'absolute', inset: 0, padding: '2% 13%', boxSizing: 'border-box',
                     display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {/* Absolutely-positioned heroes measure against their containing block's
             PADDING box, which would let large media ignore the 10%/25% spec
@@ -192,7 +196,7 @@ export default function WallIsland({ slug, initialAssets, initialSince, kiosk,
             </div>
           )}
           {hero?.uploader_name && !hideCaption && (
-            <div style={{ position: 'absolute', left: 0, right: 0, bottom: '-5%', textAlign: 'center',
+            <div style={{ position: 'absolute', left: 0, right: 0, bottom: '2%', textAlign: 'center',
                           color: '#f8f4ea', fontSize: 'clamp(14px, 1.6vw, 22px)',
                           textShadow: '0 1px 4px rgba(0,0,0,0.8)', opacity: 0.9,
                           transition: `opacity ${crossfadeMs}ms ease-in-out`, pointerEvents: 'none' }}>
@@ -223,22 +227,47 @@ export default function WallIsland({ slug, initialAssets, initialSince, kiosk,
   );
 }
 
-function SideStrip({ side, thumbs }: { side: 'left' | 'right'; thumbs: PublicAsset[] }) {
+function Backdrop({ thumb, crossfadeMs, fadingOut }: { thumb: string; crossfadeMs: number; fadingOut?: boolean }) {
+  return (
+    <div aria-hidden="true"
+         style={{ position: 'absolute', inset: 0, backgroundImage: `url(${thumb})`,
+                  backgroundSize: 'cover', backgroundPosition: 'center',
+                  filter: 'blur(48px) brightness(0.45) saturate(1.1)',
+                  transform: 'scale(1.12)',     // hide the blur's edge vignette
+                  opacity: fadingOut ? 0 : 1,
+                  transition: `opacity ${crossfadeMs}ms ease-in-out`, willChange: 'opacity' }} />
+  );
+}
+
+// Deterministic per-asset variation (NOT Math.random — the island is
+// SSR-rendered then hydrated, and random values would mismatch).
+function vary(id: number, salt: number, min: number, max: number): number {
+  const h = (id * 2654435761 + salt * 97) >>> 0;
+  return min + (h % 1000) / 1000 * (max - min);
+}
+
+function SideCards({ side, thumbs }: { side: 'left' | 'right'; thumbs: PublicAsset[] }) {
   if (thumbs.length === 0) return null;
   const ordered = side === 'right' ? [...thumbs].reverse() : thumbs;
   return (
-    <div aria-hidden="true" style={{ position: 'absolute', top: 0, bottom: 0, [side]: 0, width: '13%',
+    <div aria-hidden="true" style={{ position: 'absolute', top: 0, bottom: 0, [side]: 0, width: '12%',
                                      overflow: 'hidden', pointerEvents: 'none' }}>
-      {/* Content is tripled and the keyframe travels -33.333%, so the loop is seamless.
-          Different durations per side keep the columns from moving in lockstep. */}
+      {/* Content is tripled and the keyframe travels -33.333%, so the upward
+          drift loops seamlessly. Varied card sizes, gaps, and horizontal
+          offsets read as individually floating photos (Kululu look). */}
       <div style={{ position: 'absolute', left: 0, right: 0, top: 0, willChange: 'transform',
-                    animation: `sn-bgscroll ${side === 'left' ? 90 : 110}s linear infinite`,
-                    display: 'grid', gap: 6, filter: 'brightness(0.55)' }}>
+                    animation: `sn-bgscroll ${side === 'left' ? 75 : 95}s linear infinite`,
+                    display: 'flex', flexDirection: 'column' }}>
         {Array.from({ length: 3 }).flatMap((_, dup) =>
-          ordered.map(a => (
-            <div key={`${dup}-${a.id}`} style={{ aspectRatio: '3 / 4', backgroundImage: `url(${a.thumb})`,
-                                                 backgroundSize: 'cover', backgroundPosition: 'center',
-                                                 borderRadius: 6 }} />
+          ordered.map((a, i) => (
+            <div key={`${dup}-${a.id}`}
+                 style={{ width: `${Math.round(vary(a.id, 1, 48, 78))}%`,
+                          aspectRatio: vary(a.id, 2, 0, 1) > 0.5 ? '1 / 1' : '3 / 4',
+                          marginTop: `${Math.round(vary(a.id, 3, 36, 130))}px`,
+                          marginLeft: vary(a.id + i, 4, 0, 1) > 0.5 ? 'auto' : `${Math.round(vary(a.id, 5, 4, 16))}%`,
+                          marginRight: vary(a.id + i, 4, 0, 1) > 0.5 ? `${Math.round(vary(a.id, 5, 4, 16))}%` : undefined,
+                          backgroundImage: `url(${a.thumb})`, backgroundSize: 'cover', backgroundPosition: 'center',
+                          borderRadius: 10, boxShadow: '0 4px 14px rgba(0,0,0,0.55)' }} />
           ))
         )}
       </div>
@@ -256,6 +285,8 @@ function Hero({ asset, crossfadeMs, fadingOut, videoRef, onVideoDone }: {
     inset: 0, margin: 'auto',          // center within the padded content area
     maxWidth: '100%', maxHeight: '100%',
     objectFit: 'contain',
+    borderRadius: 10,
+    boxShadow: '0 8px 32px rgba(0,0,0,0.55)',
     opacity: fadingOut ? 0 : 1,
     transition: `opacity ${crossfadeMs}ms ease-in-out`,
     willChange: 'opacity',

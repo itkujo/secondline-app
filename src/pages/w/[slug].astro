@@ -64,11 +64,12 @@ const qrSvg = showQr ? await renderQrSvg(`${base}/u/${slug}`, { size: 180 }) : n
     </div>
     {showQr && (
       <div class="wall-qr">
-        <p>Scan to view<br />or add photos!</p>
+        <p>Scan to view or add photos!</p>
         <div class="wall-qr-code" set:html={qrSvg}></div>
       </div>
     )}
     <div class="wall-badge">
+      <span class="heart">♥</span>
       <span>Made with</span>
       <img src="/smile-nola-logo.svg" alt="Smile NOLA" />
     </div>
@@ -76,15 +77,18 @@ const qrSvg = showQr ? await renderQrSvg(`${base}/u/${slug}`, { size: 180 }) : n
         conditionally rendered overlays, so scoped selectors silently never
         match (the QR rendered unstyled and was painted over by the wall). */}
     <style is:global>
-      .wall-qr { position: fixed; left: 24px; bottom: 24px; z-index: 10; background: #fff;
-                 border-radius: 12px; padding: 12px 14px 10px; text-align: center;
-                 box-shadow: 0 4px 18px rgba(0,0,0,0.5); }
-      .wall-qr p { margin: 0 0 8px; color: #111; font-size: 14px; font-weight: 700; line-height: 1.25; }
-      .wall-qr-code svg { width: 170px; height: 170px; display: block; margin: 0 auto; }
-      .wall-badge { position: fixed; top: 16px; left: 16px; z-index: 10; display: flex; align-items: center;
-                    gap: 7px; background: rgba(0,0,0,0.55); border-radius: 999px; padding: 7px 14px; }
-      .wall-badge span { color: #f8f4ea; font-size: 12px; }
-      .wall-badge img { height: 16px; display: block; }
+      .wall-qr { position: fixed; left: 10px; bottom: 10px; z-index: 10; text-align: left; }
+      .wall-qr p { margin: 0 0 8px; padding: 6px 10px; display: inline-block; background: rgba(0,0,0,0.55);
+                   color: #fff; font-size: clamp(12px, 1.1vw, 18px); font-weight: 700; line-height: 1.25; }
+      .wall-qr-code { background: #fff; border: 3px solid #d4af37; border-radius: 8px; padding: 8px;
+                      width: clamp(150px, 14vw, 250px); box-sizing: border-box;
+                      box-shadow: 0 4px 18px rgba(0,0,0,0.5); }
+      .wall-qr-code svg { width: 100%; height: auto; display: block; }
+      .wall-badge { position: fixed; top: 10px; left: 10px; z-index: 10; display: flex; align-items: center;
+                    gap: 6px; background: rgba(0,0,0,0.65); border-radius: 999px; padding: 5px 12px; }
+      .wall-badge .heart { color: #d4af37; font-size: 12px; line-height: 1; }
+      .wall-badge span { color: #f8f4ea; font-size: 11px; }
+      .wall-badge img { height: 13px; display: block; }
     </style>
   </body>
 </html>
