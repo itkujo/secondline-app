@@ -12,7 +12,7 @@
  */
 
 import type { APIRoute } from 'astro';
-import { getEventById, setBackend, setPicTimeUrl, setWallSettings } from '@/lib/secondline/events';
+import { getEventById, setBackend, setPicTimeUrl, setWallSettings, WALL_TRANSITIONS } from '@/lib/secondline/events';
 import { countAssetsForEvent } from '@/lib/secondline/assets';
 import { getBackend } from '@/lib/secondline/storage/backends';
 
@@ -29,6 +29,7 @@ export const PATCH: APIRoute = async ({ params, request }) => {
     wall_dwell_ms?: number; wall_crossfade_ms?: number;
     wall_video_max_ms?: number; wall_video_full?: boolean;
     wall_hide_bg?: boolean; wall_hide_qr?: boolean; wall_hide_caption?: boolean;
+    wall_transition?: string;
   } = {};
   try { body = await request.json(); } catch { return json(400, { error: 'Bad JSON' }); }
 
@@ -43,7 +44,8 @@ export const PATCH: APIRoute = async ({ params, request }) => {
     }
   }
   const WALL_KEYS = ['wall_dwell_ms', 'wall_crossfade_ms', 'wall_video_max_ms',
-                     'wall_video_full', 'wall_hide_bg', 'wall_hide_qr', 'wall_hide_caption'] as const;
+                     'wall_video_full', 'wall_hide_bg', 'wall_hide_qr', 'wall_hide_caption',
+                     'wall_transition'] as const;
   if (WALL_KEYS.some(k => k in body)) {
     const dwell = body.wall_dwell_ms ?? event.wall_dwell_ms;
     const crossfade = body.wall_crossfade_ms ?? event.wall_crossfade_ms;
@@ -58,6 +60,10 @@ export const PATCH: APIRoute = async ({ params, request }) => {
     if (!Number.isInteger(videoMax) || videoMax < 1000 || videoMax > 600_000) {
       return json(400, { error: 'wall_video_max_ms must be 1000–600000' });
     }
+    const transition = body.wall_transition ?? event.wall_transition;
+    if (!(WALL_TRANSITIONS as readonly string[]).includes(transition)) {
+      return json(400, { error: `wall_transition must be one of: ${WALL_TRANSITIONS.join(', ')}` });
+    }
     const flag = (v: boolean | undefined, current: number) => v === undefined ? current : (v ? 1 : 0);
     setWallSettings(event.id, {
       wall_dwell_ms: dwell,
@@ -67,6 +73,7 @@ export const PATCH: APIRoute = async ({ params, request }) => {
       wall_hide_bg: flag(body.wall_hide_bg, event.wall_hide_bg),
       wall_hide_qr: flag(body.wall_hide_qr, event.wall_hide_qr),
       wall_hide_caption: flag(body.wall_hide_caption, event.wall_hide_caption),
+      wall_transition: transition,
     });
   }
   if ('pictime_gallery_url' in body) {

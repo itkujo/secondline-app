@@ -20,6 +20,8 @@ const event: EventRow = {
   wall_hide_bg: 0,
   wall_hide_qr: 0,
   wall_hide_caption: 0,
+  wall_transition: 'crossfade',
+  wall_bg_key: null,
   created_at: '2026-05-25T00:00:00Z',
 };
 

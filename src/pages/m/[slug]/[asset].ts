@@ -29,29 +29,42 @@ export const GET: APIRoute = async ({ params }) => {
   const slug = String(params.slug ?? '');
   const assetRaw = String(params.asset ?? '');
   if (!isValidSlugShape(slug)) return new Response('Bad slug', { status: 400 });
-  const assetId = Number(assetRaw);
-  if (!Number.isInteger(assetId) || assetId <= 0) return new Response('Bad asset id', { status: 400 });
 
   const event = getEventBySlug(slug);
   if (!event) return new Response('Not found', { status: 404 });
-  const asset = getAsset(assetId);
-  if (!asset || asset.event_id !== event.id) return new Response('Not found', { status: 404 });
-  if (asset.deleted_at) return new Response('Gone', { status: 410 });
+
+  // `bg` is a pseudo-asset: the event's custom wall background (admin-set,
+  // key on the event row — there is no assets row for it).
+  let storageKey: string;
+  let mimeFallback: string;
+  if (assetRaw === 'bg') {
+    if (!event.wall_bg_key) return new Response('Not found', { status: 404 });
+    storageKey = event.wall_bg_key;
+    mimeFallback = 'image/jpeg';
+  } else {
+    const assetId = Number(assetRaw);
+    if (!Number.isInteger(assetId) || assetId <= 0) return new Response('Bad asset id', { status: 400 });
+    const asset = getAsset(assetId);
+    if (!asset || asset.event_id !== event.id) return new Response('Not found', { status: 404 });
+    if (asset.deleted_at) return new Response('Gone', { status: 410 });
+    storageKey = asset.storage_key;
+    mimeFallback = asset.mime_type;
+  }
 
   const backend = getBackend(event.storage_backend_id);
   const s3 = createS3Adapter(backend);
 
   try {
-    const { body, contentType, contentLength } = await s3.getObjectStream(asset.storage_key);
+    const { body, contentType, contentLength } = await s3.getObjectStream(storageKey);
     const webStream = Readable.toWeb(body) as unknown as ReadableStream<Uint8Array>;
     const headers: Record<string, string> = {
-      'Content-Type': contentType ?? asset.mime_type,
+      'Content-Type': contentType ?? mimeFallback,
       'Cache-Control': 'public, max-age=31536000, immutable',
     };
     if (contentLength != null) headers['Content-Length'] = String(contentLength);
     return new Response(webStream, { status: 200, headers });
   } catch (err) {
-    console.error('[secondline] media proxy failed', { slug, assetId, err: String(err) });
+    console.error('[secondline] media proxy failed', { slug, asset: assetRaw, err: String(err) });
     return new Response('Backend error', { status: 502 });
   }
 };

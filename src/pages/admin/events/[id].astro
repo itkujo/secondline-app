@@ -90,6 +90,15 @@ const justCreated = Astro.url.searchParams.get('created') === '1';
                  value={event.wall_crossfade_ms} class="text-input" style="margin-top:4px;" />
         </label>
       </div>
+      <label style="display:block;font-size:12px;color:#b8b2a5;margin-top:10px;">
+        Transition
+        <select id="wall-transition" class="select" style="margin-top:4px;">
+          <option value="crossfade" selected={event.wall_transition === 'crossfade'}>Crossfade</option>
+          <option value="slide" selected={event.wall_transition === 'slide'}>Slide</option>
+          <option value="zoom" selected={event.wall_transition === 'zoom'}>Zoom</option>
+          <option value="kenburns" selected={event.wall_transition === 'kenburns'}>Ken Burns (slow zoom)</option>
+        </select>
+      </label>
       <div style="display:grid;gap:6px;margin-top:10px;font-size:13px;color:#cfc7b3;">
         <label><input type="checkbox" id="wall-video-full" checked={!!event.wall_video_full} /> Play videos full length (ignores video max)</label>
         <label><input type="checkbox" id="wall-hide-bg" checked={!!event.wall_hide_bg} /> Hide side images</label>
@@ -98,6 +107,22 @@ const justCreated = Astro.url.searchParams.get('created') === '1';
       </div>
       <p style="margin:12px 0 0;"><button id="wall-save" class="chip">Save</button>
       <span id="wall-status" style="color:#b8b2a5;font-size:12px;margin-left:8px;"></span></p>
+    </section>
+
+    <section class="card">
+      <h2>Wall background</h2>
+      <p style="color:#b8b2a5;font-size:13px;margin:0 0 8px;">
+        Custom backdrop behind the wall. Without one, the wall shows a blurred
+        blow-up of the current photo.
+      </p>
+      {event.wall_bg_key && (
+        <img src={`/m/${event.slug}/bg?v=${encodeURIComponent(event.wall_bg_key)}`} alt="Current wall background"
+             style="width:100%;max-height:140px;object-fit:cover;border-radius:8px;margin-bottom:10px;" />
+      )}
+      <input type="file" id="wallbg-file" accept="image/jpeg,image/png,image/webp" style="display:none;" />
+      <button id="wallbg-upload" class="chip">{event.wall_bg_key ? 'Replace image' : 'Upload image'}</button>
+      {event.wall_bg_key && <button id="wallbg-remove" class="chip" style="margin-left:8px;color:#d08989;border-color:rgba(208,137,137,0.4);">Remove</button>}
+      <span id="wallbg-status" style="color:#b8b2a5;font-size:12px;margin-left:8px;"></span>
     </section>
 
     <section class="card">
@@ -190,10 +215,33 @@ const justCreated = Astro.url.searchParams.get('created') === '1';
           wall_hide_bg: document.getElementById('wall-hide-bg').checked,
           wall_hide_qr: document.getElementById('wall-hide-qr').checked,
           wall_hide_caption: document.getElementById('wall-hide-caption').checked,
+          wall_transition: document.getElementById('wall-transition').value,
         }),
       });
       const j = await res.json().catch(() => ({}));
       status.textContent = res.ok ? 'Saved ✓ (walls pick it up on reload)' : (j.error || 'Failed');
+    });
+
+    document.getElementById('wallbg-upload')?.addEventListener('click', () => {
+      document.getElementById('wallbg-file').click();
+    });
+    document.getElementById('wallbg-file')?.addEventListener('change', async (e) => {
+      const file = e.currentTarget.files[0];
+      if (!file) return;
+      const status = document.getElementById('wallbg-status');
+      status.textContent = 'Uploading…';
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`/api/admin/events/${eventId}/wall-bg`, { method: 'POST', body: fd });
+      const j = await res.json().catch(() => ({}));
+      if (res.ok) location.reload();
+      else status.textContent = j.error || 'Failed';
+    });
+    document.getElementById('wallbg-remove')?.addEventListener('click', async () => {
+      if (!confirm('Remove the custom wall background?')) return;
+      const res = await fetch(`/api/admin/events/${eventId}/wall-bg`, { method: 'DELETE' });
+      if (res.ok) location.reload();
+      else alert('Failed to remove');
     });
 
     document.getElementById('pictime-save')?.addEventListener('click', async () => {

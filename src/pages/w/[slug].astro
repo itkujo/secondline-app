@@ -60,7 +60,9 @@ const qrSvg = showQr ? await renderQrSvg(`${base}/u/${slug}`, { size: 180 }) : n
       <WallIsland client:load slug={slug} initialAssets={initialAssets} initialSince={initialSince} kiosk={isKiosk}
                   dwellMs={event.wall_dwell_ms} crossfadeMs={event.wall_crossfade_ms}
                   videoMaxMs={event.wall_video_max_ms} videoFull={!!event.wall_video_full}
-                  hideBg={!!event.wall_hide_bg} hideCaption={!!event.wall_hide_caption} />
+                  hideBg={!!event.wall_hide_bg} hideCaption={!!event.wall_hide_caption}
+                  transition={event.wall_transition}
+                  bgUrl={event.wall_bg_key ? `/m/${slug}/bg?v=${encodeURIComponent(event.wall_bg_key)}` : null} />
     </div>
     {showQr && (
       <div class="wall-qr">

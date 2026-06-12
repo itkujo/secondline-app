@@ -29,9 +29,20 @@ interface Props {
   crossfadeMs?: number;    // per-event admin setting; ms of crossfade
   videoMaxMs?: number;     // per-event admin setting; video playback cap
   videoFull?: boolean;     // per-event admin setting; play videos to the end
-  hideBg?: boolean;        // per-event admin setting; hide blurred background
+  hideBg?: boolean;        // per-event admin setting; hide side images
   hideCaption?: boolean;   // per-event admin setting; hide uploader captions
+  transition?: string;     // per-event admin setting; hero transition style
+  bgUrl?: string | null;   // per-event admin setting; custom backdrop image
 }
+
+// Hero enter/exit keyframe pairs, keyed by the wall_transition setting.
+// kenburns is crossfade plus a slow scale across the dwell (images only).
+const TRANSITION_ANIMS: Record<string, { enter: string; exit: string }> = {
+  crossfade: { enter: 'sn-fade-in', exit: 'sn-fade-out' },
+  slide: { enter: 'sn-slide-in', exit: 'sn-slide-out' },
+  zoom: { enter: 'sn-zoom-in', exit: 'sn-zoom-out' },
+  kenburns: { enter: 'sn-fade-in', exit: 'sn-fade-out' },
+};
 
 const PHOTO_DWELL_MS = 5000;
 const VIDEO_MAX_MS = 30_000;
@@ -44,7 +55,8 @@ const VIDEO_FULL_FAILSAFE_MS = 10 * 60_000;
 export default function WallIsland({ slug, initialAssets, initialSince, kiosk,
                                      dwellMs = PHOTO_DWELL_MS, crossfadeMs = CROSSFADE_MS,
                                      videoMaxMs = VIDEO_MAX_MS, videoFull = false,
-                                     hideBg = false, hideCaption = false }: Props) {
+                                     hideBg = false, hideCaption = false,
+                                     transition = 'crossfade', bgUrl = null }: Props) {
   const [assets, setAssets] = useState<PublicAsset[]>(initialAssets);
   const [heroIdx, setHeroIdx] = useState(0);
   const [prevIdx, setPrevIdx] = useState<number | null>(null);
@@ -164,10 +176,20 @@ export default function WallIsland({ slug, initialAssets, initialSince, kiosk,
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'linear-gradient(180deg,#050505 0%,#1a0f1f 50%,#050505 100%)', overflow: 'hidden' }}>
-      {/* --- Backdrop: blurred blow-up of the current photo, crossfading with
-             the hero (Kululu behavior). Thumbs are plenty at 48px blur. --- */}
-      {prev?.mime_type.startsWith('image/') && <Backdrop key={`bp-${prev.id}`} thumb={prev.thumb} crossfadeMs={crossfadeMs} fadingOut />}
-      {hero?.mime_type.startsWith('image/') && <Backdrop key={`bc-${hero.id}`} thumb={hero.thumb} crossfadeMs={crossfadeMs} />}
+      {/* --- Backdrop: a host-supplied image when set, otherwise a blurred
+             blow-up of the current photo crossfading with the hero (Kululu
+             behavior). Thumbs are plenty at 48px blur. --- */}
+      {bgUrl ? (
+        <div aria-hidden="true"
+             style={{ position: 'absolute', inset: 0, backgroundImage: `url(${bgUrl})`,
+                      backgroundSize: 'cover', backgroundPosition: 'center',
+                      filter: 'brightness(0.55)' }} />
+      ) : (
+        <>
+          {prev?.mime_type.startsWith('image/') && <Backdrop key={`bp-${prev.id}`} thumb={prev.thumb} crossfadeMs={crossfadeMs} fadingOut />}
+          {hero?.mime_type.startsWith('image/') && <Backdrop key={`bc-${hero.id}`} thumb={hero.thumb} crossfadeMs={crossfadeMs} />}
+        </>
+      )}
 
       {/* --- Side images: floating photo cards drifting up the side gutters.
              The admin "Hide side images" toggle removes them. --- */}
@@ -186,8 +208,10 @@ export default function WallIsland({ slug, initialAssets, initialSince, kiosk,
             padding and run edge-to-edge. This inner wrapper spans exactly the
             content area so maxWidth/maxHeight:100% means "inside the padding". */}
         <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-          {prev && <Hero key={`prev-${prev.id}`} asset={prev} crossfadeMs={crossfadeMs} fadingOut />}
-          {hero && <Hero key={`cur-${hero.id}`} asset={hero} crossfadeMs={crossfadeMs} videoRef={heroVideoRef}
+          {prev && <Hero key={`prev-${prev.id}`} asset={prev} crossfadeMs={crossfadeMs} transition={transition}
+                         dwellMs={dwellMs} fadingOut />}
+          {hero && <Hero key={`cur-${hero.id}`} asset={hero} crossfadeMs={crossfadeMs} transition={transition}
+                         dwellMs={dwellMs} videoRef={heroVideoRef}
                          onVideoDone={videoFull ? advance : undefined} />}
           {!hero && (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
@@ -222,6 +246,14 @@ export default function WallIsland({ slug, initialAssets, initialSince, kiosk,
           from { transform: translateY(0); }
           to   { transform: translateY(-33.333%); }
         }
+        @keyframes sn-fade-in  { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes sn-fade-out { from { opacity: 1; } to { opacity: 0; } }
+        @keyframes sn-slide-in  { from { opacity: 0; translate: 6% 0; } to { opacity: 1; translate: 0 0; } }
+        @keyframes sn-slide-out { from { opacity: 1; translate: 0 0; } to { opacity: 0; translate: -6% 0; } }
+        @keyframes sn-zoom-in  { from { opacity: 0; scale: 1.1; } to { opacity: 1; scale: 1; } }
+        @keyframes sn-zoom-out { from { opacity: 1; scale: 1; } to { opacity: 0; scale: 0.94; } }
+        @keyframes sn-kenburns { from { scale: 1; } to { scale: 1.08; } }
+        @keyframes sn-kenburns-hold { from { scale: 1.08; } to { scale: 1.08; } }
       `}</style>
     </div>
   );
@@ -275,11 +307,25 @@ function SideCards({ side, thumbs }: { side: 'left' | 'right'; thumbs: PublicAss
   );
 }
 
-function Hero({ asset, crossfadeMs, fadingOut, videoRef, onVideoDone }: {
-  asset: PublicAsset; crossfadeMs: number; fadingOut?: boolean;
+function Hero({ asset, crossfadeMs, transition, dwellMs, fadingOut, videoRef, onVideoDone }: {
+  asset: PublicAsset; crossfadeMs: number; transition: string; dwellMs: number; fadingOut?: boolean;
   videoRef?: React.MutableRefObject<HTMLVideoElement | null>;
   onVideoDone?: () => void;   // set when videos play full-length: advance on ended/error
 }) {
+  const anims = TRANSITION_ANIMS[transition] ?? TRANSITION_ANIMS.crossfade;
+  const isImage = asset.mime_type.startsWith('image/');
+  // Keyframes use the standalone `translate`/`scale` properties (not
+  // `transform`) so the kenburns scale composes with the enter fade.
+  let animation = fadingOut
+    ? `${anims.exit} ${crossfadeMs}ms ease-in-out forwards`
+    : `${anims.enter} ${crossfadeMs}ms ease-in-out both`;
+  if (transition === 'kenburns' && isImage) {
+    // Exiting heroes hold the end scale — without this the photo would snap
+    // back to scale 1 for its fade-out.
+    animation += fadingOut
+      ? `, sn-kenburns-hold 1ms linear forwards`
+      : `, sn-kenburns ${dwellMs + crossfadeMs * 2}ms linear forwards`;
+  }
   const style: React.CSSProperties = {
     position: 'absolute',
     inset: 0, margin: 'auto',          // center within the padded content area
@@ -287,9 +333,8 @@ function Hero({ asset, crossfadeMs, fadingOut, videoRef, onVideoDone }: {
     objectFit: 'contain',
     borderRadius: 10,
     boxShadow: '0 8px 32px rgba(0,0,0,0.55)',
-    opacity: fadingOut ? 0 : 1,
-    transition: `opacity ${crossfadeMs}ms ease-in-out`,
-    willChange: 'opacity',
+    animation,
+    willChange: 'opacity, transform',
   };
   if (asset.mime_type.startsWith('video/')) {
     return (

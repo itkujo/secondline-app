@@ -27,6 +27,8 @@ export interface EventRow {
   wall_hide_bg: number;               // 0/1 — hide the blurred scrolling background
   wall_hide_qr: number;               // 0/1 — hide the upload-QR overlay
   wall_hide_caption: number;          // 0/1 — hide "Shared by <name>" captions
+  wall_transition: string;            // hero transition: crossfade | slide | zoom | kenburns
+  wall_bg_key: string | null;         // storage key of a custom wall background, if set
   created_at: string;
 }
 
