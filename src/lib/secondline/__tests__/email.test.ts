@@ -13,6 +13,8 @@ const event: EventRow = {
   status: 'active',
   first_upload_at: null,
   warned_30_at: null,
+  wall_dwell_ms: 5000,
+  wall_crossfade_ms: 400,
   created_at: '2026-05-25T00:00:00Z',
 };
 

@@ -20,6 +20,8 @@ export interface EventRow {
   status: EventStatus;
   first_upload_at: string | null;
   warned_30_at: string | null;
+  wall_dwell_ms: number;              // ms each photo stays on the wall
+  wall_crossfade_ms: number;          // ms of crossfade between wall items
   created_at: string;
 }
 

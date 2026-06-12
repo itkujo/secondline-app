@@ -75,6 +75,11 @@ export function setPicTimeUrl(eventId: number, url: string | null): void {
   getDb().prepare(`UPDATE events SET pictime_gallery_url = ? WHERE id = ?`).run(url, eventId);
 }
 
+export function setWallSettings(eventId: number, dwellMs: number, crossfadeMs: number): void {
+  getDb().prepare(`UPDATE events SET wall_dwell_ms = ?, wall_crossfade_ms = ? WHERE id = ?`)
+    .run(dwellMs, crossfadeMs, eventId);
+}
+
 export function setBackend(eventId: number, backendId: string): void {
   // Caller must enforce "no assets yet"; we don't second-guess.
   getDb().prepare(`UPDATE events SET storage_backend_id = ? WHERE id = ?`).run(backendId, eventId);

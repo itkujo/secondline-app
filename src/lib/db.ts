@@ -58,6 +58,8 @@ export function bootstrapSchema(db: Db): void {
       status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','expired')),
       first_upload_at TEXT,
       warned_30_at TEXT,
+      wall_dwell_ms INTEGER NOT NULL DEFAULT 5000,
+      wall_crossfade_ms INTEGER NOT NULL DEFAULT 400,
       created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
     );
     CREATE INDEX IF NOT EXISTS idx_events_status  ON events(status);
@@ -81,4 +83,14 @@ export function bootstrapSchema(db: Db): void {
     CREATE INDEX IF NOT EXISTS idx_assets_event ON assets(event_id, uploaded_at);
     CREATE INDEX IF NOT EXISTS idx_assets_alive ON assets(event_id) WHERE deleted_at IS NULL;
   `);
+
+  addColumnIfMissing(db, 'events', 'wall_dwell_ms', `wall_dwell_ms INTEGER NOT NULL DEFAULT 5000`);
+  addColumnIfMissing(db, 'events', 'wall_crossfade_ms', `wall_crossfade_ms INTEGER NOT NULL DEFAULT 400`);
+}
+
+function addColumnIfMissing(db: Db, table: string, column: string, ddl: string): void {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (!cols.some(c => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+  }
 }

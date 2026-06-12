@@ -25,6 +25,8 @@ interface Props {
   initialAssets: PublicAsset[];
   initialSince: string;
   kiosk: boolean;
+  dwellMs?: number;        // per-event admin setting; ms each photo shows
+  crossfadeMs?: number;    // per-event admin setting; ms of crossfade
 }
 
 const PHOTO_DWELL_MS = 5000;
@@ -32,7 +34,8 @@ const VIDEO_MAX_MS = 30_000;
 const CROSSFADE_MS = 400;
 const CONTROLS_HIDE_MS = 3000;
 
-export default function WallIsland({ slug, initialAssets, initialSince, kiosk }: Props) {
+export default function WallIsland({ slug, initialAssets, initialSince, kiosk,
+                                     dwellMs = PHOTO_DWELL_MS, crossfadeMs = CROSSFADE_MS }: Props) {
   const [assets, setAssets] = useState<PublicAsset[]>(initialAssets);
   const [heroIdx, setHeroIdx] = useState(0);
   const [prevIdx, setPrevIdx] = useState<number | null>(null);
@@ -97,17 +100,17 @@ export default function WallIsland({ slug, initialAssets, initialSince, kiosk }:
   useEffect(() => {
     if (assets.length === 0) return;
     const current = assets[heroIdx % assets.length];
-    let dwell = PHOTO_DWELL_MS;
+    let dwell = dwellMs;
     if (current.mime_type.startsWith('video/')) {
       dwell = current.duration_ms ? Math.min(current.duration_ms, VIDEO_MAX_MS) : VIDEO_MAX_MS;
     }
     rotationTimer.current = setTimeout(() => {
       setPrevIdx(heroIdx);
       setHeroIdx(i => (i + 1) % assets.length);
-      setTimeout(() => setPrevIdx(null), CROSSFADE_MS);
+      setTimeout(() => setPrevIdx(null), crossfadeMs);
     }, dwell);
     return () => { if (rotationTimer.current) clearTimeout(rotationTimer.current); };
-  }, [heroIdx, assets]);
+  }, [heroIdx, assets, dwellMs, crossfadeMs]);
 
   // --- Controls auto-hide ---
   useEffect(() => {
@@ -161,13 +164,20 @@ export default function WallIsland({ slug, initialAssets, initialSince, kiosk }:
       {/* --- Hero region --- */}
       <div style={{ position: 'absolute', inset: 0, padding: '10% 25%', boxSizing: 'border-box',
                     display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {prev && <Hero key={`prev-${prev.id}`} asset={prev} fadingOut />}
-        {hero && <Hero key={`cur-${hero.id}`} asset={hero} videoRef={heroVideoRef} />}
-        {!hero && (
-          <div style={{ textAlign: 'center', color: '#b8b2a5' }}>
-            Waiting for the first upload…
-          </div>
-        )}
+        {/* Absolutely-positioned heroes measure against their containing block's
+            PADDING box, which would let large media ignore the 10%/25% spec
+            padding and run edge-to-edge. This inner wrapper spans exactly the
+            content area so maxWidth/maxHeight:100% means "inside the padding". */}
+        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+          {prev && <Hero key={`prev-${prev.id}`} asset={prev} crossfadeMs={crossfadeMs} fadingOut />}
+          {hero && <Hero key={`cur-${hero.id}`} asset={hero} crossfadeMs={crossfadeMs} videoRef={heroVideoRef} />}
+          {!hero && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+                          justifyContent: 'center', textAlign: 'center', color: '#b8b2a5' }}>
+              Waiting for the first upload…
+            </div>
+          )}
+        </div>
       </div>
 
       {/* --- Controls --- */}
@@ -191,13 +201,14 @@ export default function WallIsland({ slug, initialAssets, initialSince, kiosk }:
   );
 }
 
-function Hero({ asset, fadingOut, videoRef }: { asset: PublicAsset; fadingOut?: boolean; videoRef?: React.MutableRefObject<HTMLVideoElement | null> }) {
+function Hero({ asset, crossfadeMs, fadingOut, videoRef }: { asset: PublicAsset; crossfadeMs: number; fadingOut?: boolean; videoRef?: React.MutableRefObject<HTMLVideoElement | null> }) {
   const style: React.CSSProperties = {
     position: 'absolute',
+    inset: 0, margin: 'auto',          // center within the padded content area
     maxWidth: '100%', maxHeight: '100%',
     objectFit: 'contain',
     opacity: fadingOut ? 0 : 1,
-    transition: `opacity 400ms ease-in-out`,
+    transition: `opacity ${crossfadeMs}ms ease-in-out`,
     willChange: 'opacity',
   };
   if (asset.mime_type.startsWith('video/')) {

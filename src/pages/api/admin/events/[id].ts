@@ -2,14 +2,15 @@
  * Admin event mutations. Guarded by middleware.
  *
  *   PATCH body:
- *     { storage_backend_id?: string, pictime_gallery_url?: string|null }
+ *     { storage_backend_id?: string, pictime_gallery_url?: string|null,
+ *       wall_dwell_ms?: number, wall_crossfade_ms?: number }
  *
  *   storage_backend_id changes are rejected if any assets exist (immutability
  *   guarantee from spec §7.5).
  */
 
 import type { APIRoute } from 'astro';
-import { getEventById, setBackend, setPicTimeUrl } from '@/lib/secondline/events';
+import { getEventById, setBackend, setPicTimeUrl, setWallSettings } from '@/lib/secondline/events';
 import { countAssetsForEvent } from '@/lib/secondline/assets';
 import { getBackend } from '@/lib/secondline/storage/backends';
 
@@ -21,7 +22,10 @@ export const PATCH: APIRoute = async ({ params, request }) => {
   const event = getEventById(id);
   if (!event) return json(404, { error: 'Not found' });
 
-  let body: { storage_backend_id?: string; pictime_gallery_url?: string | null } = {};
+  let body: {
+    storage_backend_id?: string; pictime_gallery_url?: string | null;
+    wall_dwell_ms?: number; wall_crossfade_ms?: number;
+  } = {};
   try { body = await request.json(); } catch { return json(400, { error: 'Bad JSON' }); }
 
   if (typeof body.storage_backend_id === 'string') {
@@ -33,6 +37,18 @@ export const PATCH: APIRoute = async ({ params, request }) => {
       catch { return json(400, { error: `Unknown backend ${body.storage_backend_id}` }); }
       setBackend(event.id, body.storage_backend_id);
     }
+  }
+  if ('wall_dwell_ms' in body || 'wall_crossfade_ms' in body) {
+    const dwell = body.wall_dwell_ms ?? event.wall_dwell_ms;
+    const crossfade = body.wall_crossfade_ms ?? event.wall_crossfade_ms;
+    if (!Number.isInteger(dwell) || dwell < 1000 || dwell > 120_000) {
+      return json(400, { error: 'wall_dwell_ms must be 1000–120000' });
+    }
+    if (!Number.isInteger(crossfade) || crossfade < 100 || crossfade > 5000) {
+      return json(400, { error: 'wall_crossfade_ms must be 100–5000' });
+    }
+    if (crossfade >= dwell) return json(400, { error: 'Crossfade must be shorter than photo duration' });
+    setWallSettings(event.id, dwell, crossfade);
   }
   if ('pictime_gallery_url' in body) {
     const v = body.pictime_gallery_url ? String(body.pictime_gallery_url).trim() : null;

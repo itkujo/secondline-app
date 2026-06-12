@@ -51,7 +51,8 @@ const isKiosk = Astro.url.searchParams.get('kiosk') === '1';
   </head>
   <body>
     <div id="wall-root">
-      <WallIsland client:load slug={slug} initialAssets={initialAssets} initialSince={initialSince} kiosk={isKiosk} />
+      <WallIsland client:load slug={slug} initialAssets={initialAssets} initialSince={initialSince} kiosk={isKiosk}
+                  dwellMs={event.wall_dwell_ms} crossfadeMs={event.wall_crossfade_ms} />
     </div>
   </body>
 </html>

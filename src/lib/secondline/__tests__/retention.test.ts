@@ -11,6 +11,7 @@ function event(overrides: Partial<EventRow> = {}): EventRow {
     pictime_gallery_url: null,
     expires_at: null, status: 'active',
     first_upload_at: null, warned_30_at: null,
+    wall_dwell_ms: 5000, wall_crossfade_ms: 400,
     created_at: '2026-01-01T00:00:00Z',
     ...overrides,
   };
