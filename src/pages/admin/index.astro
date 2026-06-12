@@ -1,0 +1,9 @@
+---
+/**
+ * /admin has no content of its own — Events is the admin home.
+ * Without this redirect, logging in with ?next=/admin lands on a 404.
+ */
+export const prerender = false;
+
+return Astro.redirect('/admin/events', 302);
+---
