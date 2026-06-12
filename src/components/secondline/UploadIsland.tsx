@@ -35,6 +35,17 @@ const SPINNER_STYLE: React.CSSProperties = {
 
 const HEIC_MIMES = new Set(['image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence']);
 
+// crypto.randomUUID and service workers only exist in secure contexts
+// (https or localhost). Guests on a plain-http LAN origin — phone pointed at
+// a dev box — get fallbacks: a non-crypto id and a direct fetch() upload.
+function newTileId(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
+  return `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+}
+
+const DIRECT_MAX_RETRIES = 2;
+const DIRECT_RETRY_BASE_MS = 1500;
+
 function isHeic(file: File): boolean {
   if (HEIC_MIMES.has(file.type.toLowerCase())) return true;
   // Some iOS Safari builds set type='' — fall back to extension sniff
@@ -83,6 +94,52 @@ export default function UploadIsland({ slug }: Props) {
     };
   }, []);
 
+  function setTileState(id: string, state: TileState, error?: string) {
+    setTiles(prev => prev.map(t => t.id === id ? { ...t, state, error } : t));
+  }
+
+  // Resolve the upload service worker, waiting briefly for first-visit
+  // activation. Returns null on insecure contexts (no SW API) — callers
+  // fall back to a direct fetch() upload.
+  async function getSw(): Promise<ServiceWorker | null> {
+    if (!('serviceWorker' in navigator)) return null;
+    if (swRef.current) return swRef.current;
+    if (navigator.serviceWorker.controller) return navigator.serviceWorker.controller;
+    const reg = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise<null>(r => setTimeout(() => r(null), 3000)),
+    ]);
+    return reg?.active ?? null;
+  }
+
+  async function directUpload(id: string, file: File, uploaderName: string) {
+    for (let attempt = 0; attempt <= DIRECT_MAX_RETRIES; attempt++) {
+      try {
+        setTileState(id, 'uploading');
+        const form = new FormData();
+        form.append('file', file);
+        form.append('slug', slug);
+        if (uploaderName) form.append('uploader_name', uploaderName);
+        const res = await fetch('/api/upload', { method: 'POST', body: form });
+        if (res.ok) {
+          setTileState(id, 'ok');
+          return;
+        }
+        if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
+          const body = await res.json().catch(() => null);
+          setTileState(id, 'failed', (body && body.error) || `HTTP ${res.status}`);
+          return;
+        }
+      } catch {
+        // network error: retry
+      }
+      if (attempt < DIRECT_MAX_RETRIES) {
+        await new Promise(r => setTimeout(r, DIRECT_RETRY_BASE_MS * Math.pow(2, attempt)));
+      }
+    }
+    setTileState(id, 'failed', 'retry-exhausted');
+  }
+
   async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
@@ -90,7 +147,7 @@ export default function UploadIsland({ slug }: Props) {
     if (trimmed) localStorage.setItem(NAME_STORAGE_KEY, trimmed);
 
     const newTiles: Tile[] = files.map(f => ({
-      id: crypto.randomUUID(),
+      id: newTileId(),
       name: f.name,
       size: f.size,
       previewUrl: URL.createObjectURL(f),
@@ -102,26 +159,24 @@ export default function UploadIsland({ slug }: Props) {
 
     if (fileRef.current) fileRef.current.value = '';
 
-    const sw = swRef.current ?? navigator.serviceWorker.controller;
-    if (!sw) {
-      setTiles(prev => prev.map(t => newTiles.find(n => n.id === t.id)
-        ? { ...t, state: 'failed', error: 'Try again — uploader not ready' }
-        : t));
-      return;
-    }
+    const sw = await getSw();
     for (let i = 0; i < files.length; i++) {
       const tile = newTiles[i];
       try {
         const ready = await maybeConvertHeic(files[i]);
-        sw.postMessage({
-          type: 'enqueue',
-          id: tile.id,
-          slug,
-          file: ready,
-          uploaderName: trimmed || null,
-        });
-        // SW will broadcast progress events that transition state from
-        // 'preparing' → 'uploading' → 'ok'
+        if (sw) {
+          sw.postMessage({
+            type: 'enqueue',
+            id: tile.id,
+            slug,
+            file: ready,
+            uploaderName: trimmed || null,
+          });
+          // SW will broadcast progress events that transition state from
+          // 'preparing' → 'uploading' → 'ok'
+        } else {
+          void directUpload(tile.id, ready, trimmed);
+        }
       } catch (err) {
         console.error('[secondline] HEIC conversion failed', err);
         setTiles(prev => prev.map(t => t.id === tile.id
