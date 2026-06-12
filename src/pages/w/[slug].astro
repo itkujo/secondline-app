@@ -77,18 +77,22 @@ const qrSvg = showQr ? await renderQrSvg(`${base}/u/${slug}`, { size: 180 }) : n
         conditionally rendered overlays, so scoped selectors silently never
         match (the QR rendered unstyled and was painted over by the wall). */}
     <style is:global>
-      .wall-qr { position: fixed; left: 10px; bottom: 10px; z-index: 10; text-align: left; }
-      .wall-qr p { margin: 0 0 8px; padding: 6px 10px; display: inline-block; background: rgba(0,0,0,0.55);
-                   color: #fff; font-size: clamp(12px, 1.1vw, 18px); font-weight: 700; line-height: 1.25; }
+      .wall-qr { position: fixed; left: 10px; bottom: 10px; z-index: 10; text-align: left;
+                 --qr-w: clamp(160px, 16vw, 380px); }
+      .wall-qr p { margin: 0 0 8px; padding: 8px 10px; display: block; width: var(--qr-w);
+                   box-sizing: border-box; background: rgba(0,0,0,0.55); text-align: center;
+                   color: #fff; font-size: clamp(14px, 1.5vw, 27px); font-weight: 700; line-height: 1.25; }
       .wall-qr-code { background: #fff; border: 3px solid #d4af37; border-radius: 8px; padding: 8px;
-                      width: clamp(160px, 16vw, 380px); box-sizing: border-box;
+                      width: var(--qr-w); box-sizing: border-box;
                       box-shadow: 0 4px 18px rgba(0,0,0,0.5); }
       .wall-qr-code svg { width: 100%; height: auto; display: block; }
       .wall-badge { position: fixed; top: 12px; left: 12px; z-index: 10; display: flex; align-items: center;
-                    gap: 8px; background: rgba(0,0,0,0.65); border-radius: 999px; padding: 8px 18px; }
-      .wall-badge .heart { color: #d4af37; font-size: 16px; line-height: 1; }
-      .wall-badge span { color: #f8f4ea; font-size: 14px; }
-      .wall-badge img { height: 20px; display: block; }
+                    justify-content: center; gap: 0.5em; width: clamp(160px, 16vw, 380px);
+                    box-sizing: border-box; background: rgba(0,0,0,0.65); border-radius: 999px;
+                    padding: 0.55em 1em; font-size: clamp(13px, 1.2vw, 22px); }
+      .wall-badge .heart { color: #d4af37; font-size: 1.1em; line-height: 1; }
+      .wall-badge span { color: #f8f4ea; white-space: nowrap; }
+      .wall-badge img { height: 1.4em; display: block; }
     </style>
   </body>
 </html>
