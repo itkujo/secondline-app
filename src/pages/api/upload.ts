@@ -30,6 +30,10 @@ import type { PublicAsset, SseAssetAdded } from '@/lib/secondline/types';
 export const prerender = false;
 
 export const POST: APIRoute = async ({ request }) => {
+  // Hoisted so the catch can log them: the guest's "Trouble uploading?" panel
+  // shows this same support code, so a failure line can be grepped by ref.
+  let supportCode = '';
+  let slugForLog = '';
   try {
     const ctype = request.headers.get('content-type') ?? '';
     if (!ctype.includes('multipart/form-data')) {
@@ -37,6 +41,9 @@ export const POST: APIRoute = async ({ request }) => {
     }
     const form = await request.formData();
     const slug = String(form.get('slug') ?? '');
+    slugForLog = slug;
+    const supportRaw = form.get('support_code');
+    supportCode = typeof supportRaw === 'string' ? supportRaw.replace(/[^A-Za-z0-9-]/g, '').slice(0, 16) : '';
     if (!isValidSlugShape(slug)) return json(400, { ok: false, error: 'Invalid slug' });
 
     const event = getEventBySlug(slug);
@@ -115,7 +122,7 @@ export const POST: APIRoute = async ({ request }) => {
 
     return json(200, { ok: true, asset: publicAsset });
   } catch (err) {
-    console.error('[secondline] upload failed', err);
+    console.error(`[secondline] upload failed (ref=${supportCode || 'none'} slug=${slugForLog || '?'})`, err);
     return json(500, { ok: false, error: 'Internal error' });
   }
 };

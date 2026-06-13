@@ -86,12 +86,28 @@ function humanSize(bytes: number): string {
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
+// Build identifier, surfaced in the support panel. Injected at build via the
+// Dockerfile's PUBLIC_GIT_SHA (currently 'dev' until Coolify passes the SHA).
+const BUILD_SHA = (import.meta.env as Record<string, string | undefined>).PUBLIC_GIT_SHA ?? 'dev';
+
+// Per-device support code shown in the "Trouble uploading?" panel and sent with
+// every upload, so a guest's failure can be found in the server logs by ref.
+const SUPPORT_CODE_KEY = 'sn_support_code';
+const SUPPORT_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous chars — read aloud over the phone
+function makeSupportCode(): string {
+  let s = '';
+  for (let i = 0; i < 4; i++) s += SUPPORT_ALPHABET[Math.floor(Math.random() * SUPPORT_ALPHABET.length)];
+  return `SL-${s}`;
+}
+
+interface ErrLogEntry { at: string; file: string; status: number; error: string; attempts: number }
+
 interface UploadError { status: number; error: string }
 
 // Single XHR POST with byte-level upload progress. Rejects with {status,error}
 // so the retry layer can decide whether the failure is retryable.
 function xhrUpload(
-  file: File, slug: string, uploaderName: string,
+  file: File, slug: string, uploaderName: string, supportCode: string,
   onProgress: (fraction: number) => void,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -112,6 +128,7 @@ function xhrUpload(
     form.append('file', file);
     form.append('slug', slug);
     if (uploaderName) form.append('uploader_name', uploaderName);
+    if (supportCode) form.append('support_code', supportCode);
     xhr.send(form);
   });
 }
@@ -124,10 +141,22 @@ function isRetryable(status: number): boolean {
 export default function UploadIsland({ slug }: Props) {
   const [name, setName] = useState('');
   const [tiles, setTiles] = useState<Tile[]>([]);
+  const [errorLog, setErrorLog] = useState<ErrLogEntry[]>([]);
+  const [supportCode, setSupportCode] = useState('');
+  const [copied, setCopied] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const supportRef = useRef('');
 
   useEffect(() => {
     setName(localStorage.getItem(NAME_STORAGE_KEY) ?? '');
+    let code = '';
+    try { code = localStorage.getItem(SUPPORT_CODE_KEY) ?? ''; } catch { /* private mode */ }
+    if (!code) {
+      code = makeSupportCode();
+      try { localStorage.setItem(SUPPORT_CODE_KEY, code); } catch { /* ignore */ }
+    }
+    supportRef.current = code;
+    setSupportCode(code);
   }, []);
 
   function patchTile(id: string, patch: Partial<Tile>) {
@@ -136,11 +165,13 @@ export default function UploadIsland({ slug }: Props) {
 
   async function uploadWithRetry(id: string, file: File, uploaderName: string) {
     let lastErr: UploadError = { status: 0, error: 'Upload failed' };
+    let attemptsMade = 0;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      attemptsMade = attempt + 1;
       try {
         patchTile(id, { state: 'uploading', progress: 0, attempt, error: undefined });
         let lastPct = -1;
-        await xhrUpload(file, slug, uploaderName, (frac) => {
+        await xhrUpload(file, slug, uploaderName, supportRef.current, (frac) => {
           // Only re-render when the rounded percent actually changes.
           const pct = Math.round(frac * 100);
           if (pct !== lastPct) { lastPct = pct; patchTile(id, { progress: frac }); }
@@ -153,7 +184,12 @@ export default function UploadIsland({ slug }: Props) {
         await new Promise(r => setTimeout(r, RETRY_BASE_MS * Math.pow(2, attempt)));
       }
     }
-    patchTile(id, { state: 'failed', error: lastErr.error });
+    const tileErr = lastErr.status ? `${lastErr.error} (${lastErr.status})` : lastErr.error;
+    patchTile(id, { state: 'failed', error: tileErr });
+    setErrorLog(prev => [
+      { at: new Date().toISOString(), file: file.name, status: lastErr.status, error: lastErr.error, attempts: attemptsMade },
+      ...prev,
+    ].slice(0, 20));
   }
 
   async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
@@ -197,6 +233,40 @@ export default function UploadIsland({ slug }: Props) {
     const inflight = tiles.length - ok - fail;
     return { ok, fail, inflight };
   }, [tiles]);
+
+  // A plain-text dump the guest can read to the host or copy/send to support.
+  function buildDiagnostics(): string {
+    const conn = (navigator as unknown as { connection?: { effectiveType?: string } }).connection?.effectiveType;
+    const lines = [
+      'Second Line — upload diagnostics',
+      `Support code: ${supportCode || '(generating…)'}`,
+      `Time: ${new Date().toISOString()}`,
+      `Event: ${slug}`,
+      `Result: ${stats.ok} uploaded, ${stats.fail} failed, ${stats.inflight} in progress`,
+      `Online: ${navigator.onLine ? 'yes' : 'no'}${conn ? ` (${conn})` : ''}`,
+      `Build: ${BUILD_SHA}`,
+      `Device: ${navigator.userAgent}`,
+    ];
+    if (errorLog.length) {
+      lines.push('Recent errors:');
+      for (const e of errorLog) {
+        lines.push(`- ${e.at} · ${e.file} · ${e.error}${e.status ? ` (HTTP ${e.status})` : ''} · ${e.attempts} ${e.attempts === 1 ? 'try' : 'tries'}`);
+      }
+    }
+    return lines.join('\n');
+  }
+
+  async function copyDiagnostics() {
+    try {
+      await navigator.clipboard.writeText(buildDiagnostics());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard API unavailable (insecure origin / older browser) — the
+      // read-only textarea below is the manual fallback.
+      setCopied(false);
+    }
+  }
 
   return (
     <div>
@@ -298,6 +368,39 @@ export default function UploadIsland({ slug }: Props) {
           );
         })}
       </ul>
+
+      {/* Support panel — collapsed by default; gives a guest (and whoever they
+          call for help) a copyable snapshot plus a support code that also
+          appears in the server logs. */}
+      <details style={{ marginTop: 26, borderTop: '1px solid #2a2a2a', paddingTop: 14 }}>
+        <summary style={{ cursor: 'pointer', color: '#b8b2a5', fontSize: 13, userSelect: 'none' }}>
+          Trouble uploading?
+        </summary>
+        <div style={{ marginTop: 12 }}>
+          <p style={{ margin: '0 0 10px', fontSize: 13, color: '#b8b2a5' }}>
+            Read the host your support code, or tap Copy and send the details:
+          </p>
+          <p style={{ margin: '0 0 12px', fontSize: 13, color: '#b8b2a5' }}>
+            Support code:{' '}
+            <strong style={{ color: '#d4af37', fontSize: 17, letterSpacing: '0.1em' }}>{supportCode || '…'}</strong>
+          </p>
+          <textarea
+            readOnly
+            value={buildDiagnostics()}
+            onFocus={e => e.currentTarget.select()}
+            style={{ width: '100%', minHeight: 132, boxSizing: 'border-box', resize: 'vertical',
+                     fontSize: 11, lineHeight: 1.5, fontFamily: 'ui-monospace, Menlo, Consolas, monospace',
+                     color: '#cfc9bd', background: '#0d0d0d', border: '1px solid #2a2a2a', borderRadius: 8, padding: 10 }}
+          />
+          <button
+            type="button"
+            onClick={copyDiagnostics}
+            style={{ marginTop: 8, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                     borderRadius: 999, border: '1px solid #d4af37', background: 'transparent', color: '#d4af37' }}>
+            {copied ? 'Copied ✓' : 'Copy for support'}
+          </button>
+        </div>
+      </details>
     </div>
   );
 }
