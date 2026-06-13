@@ -3,15 +3,19 @@
  *
  * Behavior:
  *  - File input accepts image/* + video/* and `multiple`
- *  - For each picked file: enqueue to the SW, render a tile that starts as
- *    "Uploading…" and flips to "✓ Uploaded" on the SW's progress message
+ *  - For each picked file: (optionally convert HEIC →) upload via XHR with a
+ *    real, byte-level progress bar per tile, retrying transient failures
  *  - Optional name field — saved to localStorage so guests don't retype it
- *  - All UX optimistic; SW handles retries silently
+ *
+ * Why XHR, not the service worker: real upload progress requires
+ * XMLHttpRequest's `upload.onprogress` (fetch exposes no upload progress, and
+ * service workers can't use XHR). So the upload runs here in the page. XHR also
+ * works on insecure origins, so no secure-context fallback is needed.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-type TileState = 'queued' | 'preparing' | 'uploading' | 'ok' | 'failed';
+type TileState = 'preparing' | 'uploading' | 'ok' | 'failed';
 
 interface Tile {
   id: string;
@@ -19,6 +23,7 @@ interface Tile {
   size: number;
   previewUrl: string;
   state: TileState;
+  progress: number;        // 0..1, byte-level upload progress (uploading state)
   attempt: number;
   error?: string;
 }
@@ -35,22 +40,21 @@ const SPINNER_STYLE: React.CSSProperties = {
 
 const HEIC_MIMES = new Set(['image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence']);
 
-// crypto.randomUUID and service workers only exist in secure contexts
-// (https or localhost). Guests on a plain-http LAN origin — phone pointed at
-// a dev box — get fallbacks: a non-crypto id and a direct fetch() upload.
-function newTileId(): string {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
-  return `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
-}
-
-const DIRECT_MAX_RETRIES = 2;
-const DIRECT_RETRY_BASE_MS = 1500;
+const MAX_RETRIES = 4;
+const RETRY_BASE_MS = 1500;
 
 // Mirror of the server caps in media-processing.ts (can't import it here —
 // it pulls in sharp). Checked before upload so guests get an instant,
 // readable "too large" instead of a slow 413.
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
+
+// crypto.randomUUID only exists in secure contexts; fall back for plain-http
+// LAN origins (a phone pointed at a dev box).
+function newTileId(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
+  return `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+}
 
 function oversizeError(file: File): string | null {
   const isVideo = file.type.toLowerCase().startsWith('video/');
@@ -72,85 +76,84 @@ async function maybeConvertHeic(file: File): Promise<File> {
   const mod = await import('heic2any');
   const heic2any = mod.default;
   const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 });
-  // heic2any returns Blob | Blob[]; flatten if needed
   const out = Array.isArray(blob) ? blob[0] : blob;
   const newName = file.name.replace(/\.(heic|heif)$/i, '.jpg');
   return new File([out], newName, { type: 'image/jpeg', lastModified: file.lastModified });
+}
+
+function humanSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+interface UploadError { status: number; error: string }
+
+// Single XHR POST with byte-level upload progress. Rejects with {status,error}
+// so the retry layer can decide whether the failure is retryable.
+function xhrUpload(
+  file: File, slug: string, uploaderName: string,
+  onProgress: (fraction: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/upload');
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(e.loaded / e.total);
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) { resolve(); return; }
+      let error = `HTTP ${xhr.status}`;
+      try { const b = JSON.parse(xhr.responseText); if (b && b.error) error = b.error; } catch { /* keep default */ }
+      reject({ status: xhr.status, error } as UploadError);
+    };
+    xhr.onerror = () => reject({ status: 0, error: 'Network error' } as UploadError);
+    xhr.ontimeout = () => reject({ status: 0, error: 'Timed out' } as UploadError);
+    const form = new FormData();
+    form.append('file', file);
+    form.append('slug', slug);
+    if (uploaderName) form.append('uploader_name', uploaderName);
+    xhr.send(form);
+  });
+}
+
+function isRetryable(status: number): boolean {
+  // network/timeout (0), or 5xx, or the two retryable 4xx
+  return status === 0 || status >= 500 || status === 408 || status === 429;
 }
 
 export default function UploadIsland({ slug }: Props) {
   const [name, setName] = useState('');
   const [tiles, setTiles] = useState<Tile[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
-  const swRef = useRef<ServiceWorker | null>(null);
 
   useEffect(() => {
     setName(localStorage.getItem(NAME_STORAGE_KEY) ?? '');
   }, []);
 
-  useEffect(() => {
-    if (!('serviceWorker' in navigator)) return;
-    let cancelled = false;
-    navigator.serviceWorker.ready.then(reg => {
-      if (cancelled) return;
-      swRef.current = reg.active;
-    });
-    const onMsg = (event: MessageEvent) => {
-      const m = event.data;
-      if (!m || m.type !== 'progress') return;
-      setTiles(prev => prev.map(t => t.id === m.id ? { ...t, state: m.state, attempt: m.attempt, error: m.error } : t));
-    };
-    navigator.serviceWorker.addEventListener('message', onMsg);
-    return () => {
-      cancelled = true;
-      navigator.serviceWorker.removeEventListener('message', onMsg);
-    };
-  }, []);
-
-  function setTileState(id: string, state: TileState, error?: string) {
-    setTiles(prev => prev.map(t => t.id === id ? { ...t, state, error } : t));
+  function patchTile(id: string, patch: Partial<Tile>) {
+    setTiles(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t));
   }
 
-  // Resolve the upload service worker, waiting briefly for first-visit
-  // activation. Returns null on insecure contexts (no SW API) — callers
-  // fall back to a direct fetch() upload.
-  async function getSw(): Promise<ServiceWorker | null> {
-    if (!('serviceWorker' in navigator)) return null;
-    if (swRef.current) return swRef.current;
-    if (navigator.serviceWorker.controller) return navigator.serviceWorker.controller;
-    const reg = await Promise.race([
-      navigator.serviceWorker.ready,
-      new Promise<null>(r => setTimeout(() => r(null), 3000)),
-    ]);
-    return reg?.active ?? null;
-  }
-
-  async function directUpload(id: string, file: File, uploaderName: string) {
-    for (let attempt = 0; attempt <= DIRECT_MAX_RETRIES; attempt++) {
+  async function uploadWithRetry(id: string, file: File, uploaderName: string) {
+    let lastErr: UploadError = { status: 0, error: 'Upload failed' };
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        setTileState(id, 'uploading');
-        const form = new FormData();
-        form.append('file', file);
-        form.append('slug', slug);
-        if (uploaderName) form.append('uploader_name', uploaderName);
-        const res = await fetch('/api/upload', { method: 'POST', body: form });
-        if (res.ok) {
-          setTileState(id, 'ok');
-          return;
-        }
-        if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
-          const body = await res.json().catch(() => null);
-          setTileState(id, 'failed', (body && body.error) || `HTTP ${res.status}`);
-          return;
-        }
-      } catch {
-        // network error: retry
-      }
-      if (attempt < DIRECT_MAX_RETRIES) {
-        await new Promise(r => setTimeout(r, DIRECT_RETRY_BASE_MS * Math.pow(2, attempt)));
+        patchTile(id, { state: 'uploading', progress: 0, attempt, error: undefined });
+        let lastPct = -1;
+        await xhrUpload(file, slug, uploaderName, (frac) => {
+          // Only re-render when the rounded percent actually changes.
+          const pct = Math.round(frac * 100);
+          if (pct !== lastPct) { lastPct = pct; patchTile(id, { progress: frac }); }
+        });
+        patchTile(id, { state: 'ok', progress: 1 });
+        return;
+      } catch (e) {
+        lastErr = (e as UploadError) ?? lastErr;
+        if (!isRetryable(lastErr.status) || attempt === MAX_RETRIES) break;
+        await new Promise(r => setTimeout(r, RETRY_BASE_MS * Math.pow(2, attempt)));
       }
     }
-    setTileState(id, 'failed', 'retry-exhausted');
+    patchTile(id, { state: 'failed', error: lastErr.error });
   }
 
   async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
@@ -166,40 +169,24 @@ export default function UploadIsland({ slug }: Props) {
         name: f.name,
         size: f.size,
         previewUrl: URL.createObjectURL(f),
-        state: tooBig ? 'failed' as TileState : isHeic(f) ? 'preparing' as TileState : 'queued' as TileState,
+        state: tooBig ? 'failed' : isHeic(f) ? 'preparing' : 'uploading',
+        progress: 0,
         attempt: 0,
         error: tooBig ?? undefined,
       };
     });
-    // Show 'preparing' tile state for the duration of HEIC conversion (if any)
     setTiles(prev => [...newTiles, ...prev]);
-
     if (fileRef.current) fileRef.current.value = '';
 
-    const sw = await getSw();
     for (let i = 0; i < files.length; i++) {
       const tile = newTiles[i];
       if (tile.state === 'failed') continue; // rejected client-side (too large)
       try {
         const ready = await maybeConvertHeic(files[i]);
-        if (sw) {
-          sw.postMessage({
-            type: 'enqueue',
-            id: tile.id,
-            slug,
-            file: ready,
-            uploaderName: trimmed || null,
-          });
-          // SW will broadcast progress events that transition state from
-          // 'preparing' → 'uploading' → 'ok'
-        } else {
-          void directUpload(tile.id, ready, trimmed);
-        }
+        await uploadWithRetry(tile.id, ready, trimmed);
       } catch (err) {
         console.error('[secondline] HEIC conversion failed', err);
-        setTiles(prev => prev.map(t => t.id === tile.id
-          ? { ...t, state: 'failed' as TileState, error: 'Couldn\'t prepare this photo' }
-          : t));
+        patchTile(tile.id, { state: 'failed', error: "Couldn't prepare this photo" });
       }
     }
   }
@@ -253,32 +240,63 @@ export default function UploadIsland({ slug }: Props) {
 
       <ul style={{ listStyle: 'none', padding: 0, margin: '12px 0 0', display: 'grid',
                    gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 8 }}>
-        {tiles.map(t => (
-          <li key={t.id} style={{ position: 'relative', aspectRatio: '1 / 1', borderRadius: 8,
-                                  overflow: 'hidden', background: '#111' }}>
-            <img src={t.previewUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover',
-                                                    filter: t.state === 'ok' ? 'none' : 'brightness(0.65)' }} />
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', gap: 6,
-                          alignItems: 'center', justifyContent: 'center',
-                          color: '#fff', fontSize: 13, fontWeight: 700, textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}>
-              {t.state === 'ok' && '✓'}
-              {(t.state === 'uploading' || t.state === 'queued' || t.state === 'preparing') && (
-                <>
-                  <span style={SPINNER_STYLE} aria-label="Uploading" role="status" />
-                  {t.state === 'preparing' && 'Preparing…'}
-                </>
-              )}
-              {t.state === 'failed' && (
-                <span style={{ padding: '0 8px', textAlign: 'center' }}>
-                  <span style={{ color: '#e08585', fontSize: 18 }}>!</span>
-                  <span style={{ display: 'block', fontSize: 11, fontWeight: 500, marginTop: 2 }}>
-                    {t.error ?? 'Upload failed'}
+        {tiles.map(t => {
+          const pct = Math.round(t.progress * 100);
+          return (
+            <li key={t.id} style={{ position: 'relative', aspectRatio: '1 / 1', borderRadius: 8,
+                                    overflow: 'hidden', background: '#111' }}>
+              <img src={t.previewUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover',
+                                                      filter: t.state === 'ok' ? 'none' : 'brightness(0.6)' }} />
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', gap: 6,
+                            alignItems: 'center', justifyContent: 'center',
+                            color: '#fff', fontSize: 13, fontWeight: 700, textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}>
+                {t.state === 'ok' && <span style={{ fontSize: 22 }}>✓</span>}
+                {t.state === 'preparing' && (
+                  <>
+                    <span style={SPINNER_STYLE} aria-label="Preparing" role="status" />
+                    <span style={{ fontSize: 11, fontWeight: 600 }}>Preparing…</span>
+                  </>
+                )}
+                {t.state === 'uploading' && (
+                  <span style={{ fontSize: 15, fontWeight: 700 }} aria-label={`Uploading ${pct}%`} role="status">
+                    {pct}%
+                    {t.attempt > 0 && (
+                      <span style={{ display: 'block', fontSize: 10, fontWeight: 500, color: '#e0c074' }}>
+                        retry {t.attempt}
+                      </span>
+                    )}
                   </span>
+                )}
+                {t.state === 'failed' && (
+                  <span style={{ padding: '0 8px', textAlign: 'center' }}>
+                    <span style={{ color: '#e08585', fontSize: 18 }}>!</span>
+                    <span style={{ display: 'block', fontSize: 11, fontWeight: 500, marginTop: 2 }}>
+                      {t.error ?? 'Upload failed'}
+                    </span>
+                  </span>
+                )}
+              </div>
+
+              {/* Real progress bar pinned to the bottom of the tile. */}
+              {t.state === 'uploading' && (
+                <div aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 5,
+                                                 background: 'rgba(0,0,0,0.45)' }}>
+                  <div style={{ height: '100%', width: `${pct}%`, background: '#d4af37',
+                                transition: 'width 0.15s linear' }} />
+                </div>
+              )}
+
+              {/* Size label, bottom-left, for a little more at-a-glance info. */}
+              {t.state !== 'failed' && (
+                <span style={{ position: 'absolute', left: 4, top: 4, fontSize: 10, fontWeight: 600, color: '#fff',
+                               background: 'rgba(0,0,0,0.5)', borderRadius: 4, padding: '1px 5px',
+                               textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}>
+                  {humanSize(t.size)}
                 </span>
               )}
-            </div>
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
