@@ -31,6 +31,17 @@ that monorepo; the canonical spec and plan now live here in `docs/`.
 - Always `getEnv()` from `@/lib/env`, never raw `process.env`
 - `crypto.randomUUID()` for external IDs, `crypto.timingSafeEqual` for token compares
 
+## Guest upload flow + support troubleshooting
+
+See **README → "Guest uploads & troubleshooting"** for the full picture. In
+short: `/u/<slug>` → [`UploadIsland`](src/components/secondline/UploadIsland.tsx)
+uploads each file via XHR (real progress; the retry service worker is now
+unused) → [`/api/upload`](src/pages/api/upload.ts) (sharp → S3 → SQLite → SSE).
+The upload page's "Trouble uploading?" panel surfaces a per-device support code
+(`SL-XXXX`) that is sent with every upload and logged on failure as
+`[secondline] upload failed (ref=SL-XXXX slug=...) <error>` — grep that ref to
+find a guest's exact session.
+
 ## Critical proxy lesson (from smile-nola operational experience)
 
 Never gate runtime behavior on `request.url.hostname` / `Astro.url.hostname`.
