@@ -5,6 +5,7 @@ import { listAssetsForEvent, countAssetsForEvent } from '@/lib/secondline/assets
 import { listBackends } from '@/lib/secondline/storage/backends';
 import { renderQrSvg } from '@/lib/secondline/qr';
 import { getEnv } from '@/lib/env';
+import { getMessages } from '@/lib/i18n';
 
 export const prerender = false;
 
@@ -13,6 +14,7 @@ if (!Number.isInteger(id)) return Astro.redirect('/admin/events');
 const event = getEventById(id);
 if (!event) return Astro.redirect('/admin/events');
 
+const t = getMessages(Astro.locals.locale).admin;
 const assets = listAssetsForEvent(event.id);
 const backends = listBackends();
 const base = getEnv('SECONDLINE_PUBLIC_URL') || 'https://secondline.smile-nola.com';
@@ -22,44 +24,51 @@ const galleryUrl = `${base}/g/${event.slug}`;
 const qrSvg = await renderQrSvg(uploadUrl, { size: 280 });
 const backendLocked = countAssetsForEvent(event.id) > 0;
 const justCreated = Astro.url.searchParams.get('created') === '1';
+
+// Strings the inline <script> needs at runtime (status text, confirm/alert copy).
+const js = {
+  saving: t.saving, saved: t.saved, savedReload: t.savedReload, failed: t.failed,
+  uploading: t.uploading, sending: t.sending, sent: t.sent,
+  copied: t.copied, pressToCopy: t.pressToCopy,
+  failedBackend: t.failedBackend, confirmRemoveBg: t.confirmRemoveBg, failedRemove: t.failedRemove,
+  confirmDeleteAsset: t.confirmDeleteAsset, failedDelete: t.failedDelete,
+};
 ---
 <AdminLayout section="events" title={`Event ${event.slug}`}>
-  <p style="margin:0 0 6px;"><a href="/admin/events" style="color:#d4af37;">← All events</a></p>
+  <p style="margin:0 0 6px;"><a href="/admin/events" style="color:#d4af37;">{t.allEvents}</a></p>
   <h1 style="margin:0 0 4px;">{event.host_first_name} {event.host_last_name}</h1>
   <p style="color:#b8b2a5;margin:0 0 24px;">
-    Event date {event.event_date} · expires {event.expires_at?.slice(0,10) ?? '—'} ·
+    {t.metaEventDate} {event.event_date} · {t.metaExpires} {event.expires_at?.slice(0,10) ?? '—'} ·
     {event.host_email}
   </p>
 
   {justCreated && (
     <div style="background:rgba(70,160,90,0.12);border:1px solid rgba(70,160,90,0.3);color:#6ec089;padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:14px;">
-      Event created. Print the QR below for the venue.
+      {t.eventCreated}
     </div>
   )}
 
   <div class="grid">
     <section class="card">
-      <h2>Public URLs</h2>
+      <h2>{t.cardPublicUrls}</h2>
       <ul class="urls">
-        <li><label>Upload</label><code>{uploadUrl}</code><button class="chip copy-btn" data-copy={uploadUrl}>Copy</button></li>
-        <li><label>Wall</label><code>{wallUrl}</code><button class="chip copy-btn" data-copy={wallUrl}>Copy</button></li>
-        <li><label>Gallery</label><code>{galleryUrl}</code><button class="chip copy-btn" data-copy={galleryUrl}>Copy</button></li>
+        <li><label>{t.urlUpload}</label><code>{uploadUrl}</code><button class="chip copy-btn" data-copy={uploadUrl}>{t.copy}</button></li>
+        <li><label>{t.urlWall}</label><code>{wallUrl}</code><button class="chip copy-btn" data-copy={wallUrl}>{t.copy}</button></li>
+        <li><label>{t.urlGallery}</label><code>{galleryUrl}</code><button class="chip copy-btn" data-copy={galleryUrl}>{t.copy}</button></li>
       </ul>
     </section>
 
     <section class="card">
-      <h2>Print this QR for signage</h2>
+      <h2>{t.cardPrintQr}</h2>
       <div class="qr" set:html={qrSvg}></div>
-      <p style="color:#b8b2a5;font-size:13px;margin:8px 0 0;">Scans to <code>{uploadUrl}</code></p>
-      <p><button class="chip" onclick="window.print()">Print</button></p>
+      <p style="color:#b8b2a5;font-size:13px;margin:8px 0 0;">{t.scansTo} <code>{uploadUrl}</code></p>
+      <p><button class="chip" onclick="window.print()">{t.print}</button></p>
     </section>
 
     <section class="card">
-      <h2>Storage backend</h2>
+      <h2>{t.cardStorage}</h2>
       <p style="color:#b8b2a5;font-size:13px;margin:0 0 8px;">
-        {backendLocked
-          ? <>Locked — assets already uploaded ({assets.length}).</>
-          : <>Choose where uploads land. Locked once the first upload arrives.</>}
+        {backendLocked ? t.backendLocked(assets.length) : t.backendChoose}
       </p>
       <select id="backend-select" disabled={backendLocked} class="select">
         {backends.map(b => (
@@ -69,89 +78,100 @@ const justCreated = Astro.url.searchParams.get('created') === '1';
     </section>
 
     <section class="card">
-      <h2>Wall display</h2>
+      <h2>{t.cardWallDisplay}</h2>
       <p style="color:#b8b2a5;font-size:13px;margin:0 0 8px;">
-        Timing and overlays for this event's wall. Walls pick changes up on reload.
+        {t.wallDisplaySub}
       </p>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;align-items:end;">
         <label style="font-size:12px;color:#b8b2a5;">
-          Photo duration (s)
+          {t.photoDuration}
           <input id="wall-dwell-input" type="number" min="1" max="120" step="0.5"
                  value={event.wall_dwell_ms / 1000} class="text-input" style="margin-top:4px;" />
         </label>
         <label style="font-size:12px;color:#b8b2a5;">
-          Video max (s)
+          {t.videoMax}
           <input id="wall-video-max-input" type="number" min="1" max="600" step="1"
                  value={event.wall_video_max_ms / 1000} class="text-input" style="margin-top:4px;" />
         </label>
         <label style="font-size:12px;color:#b8b2a5;">
-          Crossfade (ms)
+          {t.crossfade}
           <input id="wall-crossfade-input" type="number" min="100" max="5000" step="50"
                  value={event.wall_crossfade_ms} class="text-input" style="margin-top:4px;" />
         </label>
       </div>
       <label style="display:block;font-size:12px;color:#b8b2a5;margin-top:10px;">
-        Transition
+        {t.transition}
         <select id="wall-transition" class="select" style="margin-top:4px;">
-          <option value="crossfade" selected={event.wall_transition === 'crossfade'}>Crossfade</option>
-          <option value="slide" selected={event.wall_transition === 'slide'}>Slide</option>
-          <option value="zoom" selected={event.wall_transition === 'zoom'}>Zoom</option>
-          <option value="kenburns" selected={event.wall_transition === 'kenburns'}>Ken Burns (slow zoom)</option>
+          <option value="crossfade" selected={event.wall_transition === 'crossfade'}>{t.transCrossfade}</option>
+          <option value="slide" selected={event.wall_transition === 'slide'}>{t.transSlide}</option>
+          <option value="zoom" selected={event.wall_transition === 'zoom'}>{t.transZoom}</option>
+          <option value="kenburns" selected={event.wall_transition === 'kenburns'}>{t.transKenburns}</option>
         </select>
       </label>
       <div style="display:grid;gap:6px;margin-top:10px;font-size:13px;color:#cfc7b3;">
-        <label><input type="checkbox" id="wall-video-full" checked={!!event.wall_video_full} /> Play videos full length (ignores video max)</label>
-        <label><input type="checkbox" id="wall-hide-bg" checked={!!event.wall_hide_bg} /> Hide side images</label>
-        <label><input type="checkbox" id="wall-hide-qr" checked={!!event.wall_hide_qr} /> Hide QR code on the wall</label>
-        <label><input type="checkbox" id="wall-hide-caption" checked={!!event.wall_hide_caption} /> Hide "Shared by" captions</label>
+        <label><input type="checkbox" id="wall-video-full" checked={!!event.wall_video_full} /> {t.playVideosFull}</label>
+        <label><input type="checkbox" id="wall-hide-bg" checked={!!event.wall_hide_bg} /> {t.hideSideImages}</label>
+        <label><input type="checkbox" id="wall-hide-qr" checked={!!event.wall_hide_qr} /> {t.hideQrOnWall}</label>
+        <label><input type="checkbox" id="wall-hide-caption" checked={!!event.wall_hide_caption} /> {t.hideCaptions}</label>
       </div>
-      <p style="margin:12px 0 0;"><button id="wall-save" class="chip">Save</button>
+      <p style="margin:12px 0 0;"><button id="wall-save" class="chip">{t.save}</button>
       <span id="wall-status" style="color:#b8b2a5;font-size:12px;margin-left:8px;"></span></p>
     </section>
 
     <section class="card">
-      <h2>Wall background</h2>
+      <h2>{t.cardLanguage}</h2>
+      <p style="color:#b8b2a5;font-size:13px;margin:0 0 8px;">{t.languageSub}</p>
+      <select id="language-select" class="select">
+        <option value="" selected={!event.language}>{t.langAuto}</option>
+        <option value="en" selected={event.language === 'en'}>{t.langEnglish}</option>
+        <option value="es" selected={event.language === 'es'}>{t.langSpanish}</option>
+      </select>
+      <p style="margin:12px 0 0;"><button id="language-save" class="chip">{t.save}</button>
+      <span id="language-status" style="color:#b8b2a5;font-size:12px;margin-left:8px;"></span></p>
+    </section>
+
+    <section class="card">
+      <h2>{t.cardWallBg}</h2>
       <p style="color:#b8b2a5;font-size:13px;margin:0 0 8px;">
-        Custom backdrop behind the wall. Without one, the wall shows a blurred
-        blow-up of the current photo.
+        {t.wallBgSub}
       </p>
       {event.wall_bg_key && (
-        <img src={`/m/${event.slug}/bg?v=${encodeURIComponent(event.wall_bg_key)}`} alt="Current wall background"
+        <img src={`/m/${event.slug}/bg?v=${encodeURIComponent(event.wall_bg_key)}`} alt={t.currentWallBg}
              style="width:100%;max-height:140px;object-fit:cover;border-radius:8px;margin-bottom:10px;" />
       )}
       <input type="file" id="wallbg-file" accept="image/jpeg,image/png,image/webp" style="display:none;" />
-      <button id="wallbg-upload" class="chip">{event.wall_bg_key ? 'Replace image' : 'Upload image'}</button>
-      {event.wall_bg_key && <button id="wallbg-remove" class="chip" style="margin-left:8px;color:#d08989;border-color:rgba(208,137,137,0.4);">Remove</button>}
+      <button id="wallbg-upload" class="chip">{event.wall_bg_key ? t.replaceImage : t.uploadImage}</button>
+      {event.wall_bg_key && <button id="wallbg-remove" class="chip" style="margin-left:8px;color:#d08989;border-color:rgba(208,137,137,0.4);">{t.remove}</button>}
       <span id="wallbg-status" style="color:#b8b2a5;font-size:12px;margin-left:8px;"></span>
     </section>
 
     <section class="card">
-      <h2>PicTime gallery URL</h2>
-      <p style="color:#b8b2a5;font-size:13px;margin:0 0 8px;">Used by the gallery "Buy prints" CTA and the expired redirect.</p>
+      <h2>{t.cardPictime}</h2>
+      <p style="color:#b8b2a5;font-size:13px;margin:0 0 8px;">{t.pictimeSub}</p>
       <div style="display:flex;gap:8px;align-items:center;">
         <input id="pictime-input" type="url" placeholder="https://pictime.example/your-gallery"
                value={event.pictime_gallery_url ?? ''} class="text-input" />
-        <button id="pictime-save" class="chip">Save</button>
+        <button id="pictime-save" class="chip">{t.save}</button>
       </div>
       <span id="pictime-status" style="color:#b8b2a5;font-size:12px;margin-top:6px;display:block;"></span>
     </section>
 
     <section class="card">
-      <h2>Send gallery email</h2>
+      <h2>{t.cardSendGallery}</h2>
       <p style="color:#b8b2a5;font-size:13px;margin:0 0 8px;">
-        Emails the host their gallery URL + ZIP link. Send when the event is over.
+        {t.sendGallerySub}
       </p>
       <p style="color:#b8b2a5;font-size:12px;margin:0 0 12px;">
-        Recipient: <code>{event.host_email}</code>
+        {t.recipient} <code>{event.host_email}</code>
       </p>
-      <button id="send-gallery-btn" class="chip">Send gallery email</button>
+      <button id="send-gallery-btn" class="chip">{t.sendGalleryBtn}</button>
       <span id="send-gallery-status" style="color:#b8b2a5;font-size:12px;margin-left:8px;"></span>
     </section>
   </div>
 
-  <h2 style="margin-top:32px;">Assets ({assets.length})</h2>
+  <h2 style="margin-top:32px;">{t.assetsHeading(assets.length)}</h2>
   {assets.length === 0
-    ? <p style="color:#b8b2a5;">None yet.</p>
+    ? <p style="color:#b8b2a5;">{t.noAssets}</p>
     : (
       <ul class="asset-grid">
         {assets.map(a => (
@@ -160,25 +180,25 @@ const justCreated = Astro.url.searchParams.get('created') === '1';
               <img src={`/m/${event.slug}/${a.id}_thumb`} alt="" loading="lazy" />
             </a>
             <div class="asset-meta">
-              <span>{a.uploader_name ?? <em style="color:#666;">anonymous</em>}</span>
-              <button class="del-btn" data-asset-id={a.id}>Delete</button>
+              <span>{a.uploader_name ?? <em style="color:#666;">{t.anonymous}</em>}</span>
+              <button class="del-btn" data-asset-id={a.id}>{t.deleteAsset}</button>
             </div>
           </li>
         ))}
       </ul>
     )}
 
-  <script define:vars={{ eventId: event.id }}>
+  <script define:vars={{ eventId: event.id, js }}>
     document.querySelectorAll('.copy-btn').forEach((btn) => {
       btn.addEventListener('click', async () => {
         const val = btn.getAttribute('data-copy') || '';
         try {
           await navigator.clipboard.writeText(val);
           const orig = btn.textContent;
-          btn.textContent = 'Copied';
+          btn.textContent = js.copied;
           setTimeout(() => { btn.textContent = orig; }, 1200);
         } catch {
-          btn.textContent = 'Press ⌘C';
+          btn.textContent = js.pressToCopy;
         }
       });
     });
@@ -192,7 +212,7 @@ const justCreated = Astro.url.searchParams.get('created') === '1';
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        alert(j.error || 'Failed to update backend');
+        alert(j.error || js.failedBackend);
         location.reload();
       } else {
         select.disabled = false;
@@ -204,7 +224,7 @@ const justCreated = Astro.url.searchParams.get('created') === '1';
       const dwellS = parseFloat(document.getElementById('wall-dwell-input').value);
       const videoMaxS = parseFloat(document.getElementById('wall-video-max-input').value);
       const crossfade = parseInt(document.getElementById('wall-crossfade-input').value, 10);
-      status.textContent = 'Saving…';
+      status.textContent = js.saving;
       const res = await fetch(`/api/admin/events/${eventId}`, {
         method: 'PATCH', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -219,7 +239,18 @@ const justCreated = Astro.url.searchParams.get('created') === '1';
         }),
       });
       const j = await res.json().catch(() => ({}));
-      status.textContent = res.ok ? 'Saved ✓ (walls pick it up on reload)' : (j.error || 'Failed');
+      status.textContent = res.ok ? js.savedReload : (j.error || js.failed);
+    });
+
+    document.getElementById('language-save')?.addEventListener('click', async () => {
+      const status = document.getElementById('language-status');
+      status.textContent = js.saving;
+      const res = await fetch(`/api/admin/events/${eventId}`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ language: document.getElementById('language-select').value || null }),
+      });
+      const j = await res.json().catch(() => ({}));
+      status.textContent = res.ok ? js.saved : (j.error || js.failed);
     });
 
     document.getElementById('wallbg-upload')?.addEventListener('click', () => {
@@ -229,52 +260,52 @@ const justCreated = Astro.url.searchParams.get('created') === '1';
       const file = e.currentTarget.files[0];
       if (!file) return;
       const status = document.getElementById('wallbg-status');
-      status.textContent = 'Uploading…';
+      status.textContent = js.uploading;
       const fd = new FormData();
       fd.append('file', file);
       const res = await fetch(`/api/admin/events/${eventId}/wall-bg`, { method: 'POST', body: fd });
       const j = await res.json().catch(() => ({}));
       if (res.ok) location.reload();
-      else status.textContent = j.error || 'Failed';
+      else status.textContent = j.error || js.failed;
     });
     document.getElementById('wallbg-remove')?.addEventListener('click', async () => {
-      if (!confirm('Remove the custom wall background?')) return;
+      if (!confirm(js.confirmRemoveBg)) return;
       const res = await fetch(`/api/admin/events/${eventId}/wall-bg`, { method: 'DELETE' });
       if (res.ok) location.reload();
-      else alert('Failed to remove');
+      else alert(js.failedRemove);
     });
 
     document.getElementById('pictime-save')?.addEventListener('click', async () => {
       const input = document.getElementById('pictime-input');
       const status = document.getElementById('pictime-status');
-      status.textContent = 'Saving…';
+      status.textContent = js.saving;
       const res = await fetch(`/api/admin/events/${eventId}`, {
         method: 'PATCH', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ pictime_gallery_url: input.value || null }),
       });
       const j = await res.json().catch(() => ({}));
-      status.textContent = res.ok ? 'Saved ✓' : (j.error || 'Failed');
+      status.textContent = res.ok ? js.saved : (j.error || js.failed);
     });
 
     document.getElementById('send-gallery-btn')?.addEventListener('click', async () => {
       const btn = document.getElementById('send-gallery-btn');
       const status = document.getElementById('send-gallery-status');
       btn.disabled = true;
-      status.textContent = 'Sending…';
+      status.textContent = js.sending;
       const res = await fetch(`/api/admin/events/${eventId}/send-gallery`, { method: 'POST' });
       const j = await res.json().catch(() => ({}));
-      status.textContent = res.ok ? 'Sent ✓' : (j.error || 'Failed');
+      status.textContent = res.ok ? js.sent : (j.error || js.failed);
       setTimeout(() => { btn.disabled = false; }, 2000);
     });
 
     document.querySelectorAll('.del-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
         const assetId = btn.getAttribute('data-asset-id');
-        if (!confirm('Delete this asset?')) return;
+        if (!confirm(js.confirmDeleteAsset)) return;
         btn.disabled = true;
         const res = await fetch(`/api/admin/events/${eventId}/assets/${assetId}`, { method: 'DELETE' });
         if (res.ok) btn.closest('li')?.remove();
-        else { alert('Failed to delete'); btn.disabled = false; }
+        else { alert(js.failedDelete); btn.disabled = false; }
       });
     });
   </script>

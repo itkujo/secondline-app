@@ -12,6 +12,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { getMessages, type Locale } from '@/lib/i18n';
 
 interface Props {
   images: string[];
@@ -19,12 +20,14 @@ interface Props {
   names?: string[];
   dwellMs?: number;
   crossfadeMs?: number;
+  locale?: Locale;
 }
 
 const DWELL_MS = 3400;
 const CROSSFADE_MS = 800;
 
-export default function DemoWall({ images, names = [], dwellMs = DWELL_MS, crossfadeMs = CROSSFADE_MS }: Props) {
+export default function DemoWall({ images, names = [], dwellMs = DWELL_MS, crossfadeMs = CROSSFADE_MS, locale = 'en' }: Props) {
+  const m = getMessages(locale);
   const [idx, setIdx] = useState(0);
   const [prev, setPrev] = useState<number | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -71,7 +74,7 @@ export default function DemoWall({ images, names = [], dwellMs = DWELL_MS, cross
             <div style={{ position: 'absolute', left: 0, right: 0, bottom: '1%', textAlign: 'center',
                           color: '#f8f4ea', fontSize: 'clamp(11px, 1.4vw, 18px)',
                           textShadow: '0 1px 4px rgba(0,0,0,0.85)', opacity: 0.92, pointerEvents: 'none' }}>
-              Shared by {name}
+              {m.landing.sharedBy(name)}
             </div>
           )}
         </div>
@@ -82,7 +85,7 @@ export default function DemoWall({ images, names = [], dwellMs = DWELL_MS, cross
                     gap: '0.45em', background: 'rgba(0,0,0,0.6)', borderRadius: 999,
                     padding: '0.4em 0.9em', fontSize: 'clamp(9px, 1.1vw, 14px)' }}>
         <span style={{ color: '#d4af37', lineHeight: 1 }}>♥</span>
-        <span style={{ color: '#f8f4ea', whiteSpace: 'nowrap' }}>Made with</span>
+        <span style={{ color: '#f8f4ea', whiteSpace: 'nowrap' }}>{m.common.madeWith}</span>
         <span style={{ color: '#d4af37', fontFamily: 'Georgia, serif', fontWeight: 700, letterSpacing: '0.05em' }}>
           Smile NOLA
         </span>
@@ -100,9 +103,8 @@ export default function DemoWall({ images, names = [], dwellMs = DWELL_MS, cross
             <span key={i} style={{ background: on ? '#0a0a0a' : 'transparent', borderRadius: 0.5 }} />
           ))}
         </div>
-        <span style={{ color: '#f8f4ea', fontSize: 'clamp(9px, 1.1vw, 14px)', fontWeight: 600, lineHeight: 1.2,
-                       whiteSpace: 'nowrap' }}>
-          Scan to add<br />your photos
+        <span style={{ color: '#f8f4ea', fontSize: 'clamp(9px, 1.1vw, 14px)', fontWeight: 600, lineHeight: 1.2 }}>
+          {m.landing.demoScan}
         </span>
       </div>
 

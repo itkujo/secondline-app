@@ -22,6 +22,7 @@ const event: EventRow = {
   wall_hide_caption: 0,
   wall_transition: 'crossfade',
   wall_bg_key: null,
+  language: null,
   created_at: '2026-05-25T00:00:00Z',
 };
 
@@ -49,5 +50,15 @@ describe('secondline email templates', () => {
     const html = renderGalleryReadyHtml(evil, 'https://x');
     expect(html).not.toContain('<script>alert');
     expect(html).toContain('&lt;script&gt;');
+  });
+
+  it('renders in English by default and Spanish when the event language is es', () => {
+    const en = renderGalleryReadyHtml(event, 'https://x');
+    expect(en).toContain('Your event gallery is ready');
+    expect(en).toContain('<html lang="en">');
+
+    const es = renderGalleryReadyHtml({ ...event, language: 'es' }, 'https://x');
+    expect(es).toContain('La galería de tu evento está lista');
+    expect(es).toContain('<html lang="es">');
   });
 });

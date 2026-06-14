@@ -9,17 +9,19 @@
 import AdminLayout from '@/layouts/AdminLayout.astro';
 import { listBackends } from '@/lib/secondline/storage/backends';
 import { getEnv } from '@/lib/env';
+import { getMessages } from '@/lib/i18n';
 
 export const prerender = false;
 
+const t = getMessages(Astro.locals.locale).admin;
 const backends = listBackends();
 const defaultBackend = getEnv('SECONDLINE_ACTIVE_BACKEND') || 'wasabi';
 const error = Astro.url.searchParams.get('error') || '';
 ---
-<AdminLayout section="events" title="New event">
-  <p style="margin:0 0 6px;"><a href="/admin/events" style="color:#d4af37;">← All events</a></p>
-  <h1>New event</h1>
-  <p style="color:#b8b2a5;margin:0 0 24px;">Creates the gallery slug + QR code. Storage backend locks after the first upload.</p>
+<AdminLayout section="events" title={t.newEventTitle}>
+  <p style="margin:0 0 6px;"><a href="/admin/events" style="color:#d4af37;">{t.allEvents}</a></p>
+  <h1>{t.newEventTitle}</h1>
+  <p style="color:#b8b2a5;margin:0 0 24px;">{t.newEventSub}</p>
 
   {error && (
     <div style="background:rgba(160,80,80,0.12);border:1px solid rgba(160,80,80,0.3);color:#d08989;padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:14px;">
@@ -30,27 +32,27 @@ const error = Astro.url.searchParams.get('error') || '';
   <form method="POST" action="/api/admin/events" class="event-form">
     <div class="row">
       <label>
-        <span>Host first name</span>
+        <span>{t.hostFirstName}</span>
         <input type="text" name="host_first_name" required maxlength="80" autocomplete="given-name" />
       </label>
       <label>
-        <span>Host last name</span>
+        <span>{t.hostLastName}</span>
         <input type="text" name="host_last_name" required maxlength="80" autocomplete="family-name" />
       </label>
     </div>
 
     <label>
-      <span>Host email</span>
+      <span>{t.hostEmail}</span>
       <input type="email" name="host_email" required maxlength="200" autocomplete="email" />
     </label>
 
     <label>
-      <span>Event date</span>
+      <span>{t.eventDate}</span>
       <input type="date" name="event_date" required />
     </label>
 
     <label>
-      <span>Storage backend</span>
+      <span>{t.storageBackend}</span>
       <select name="storage_backend_id" required>
         {backends.map(b => (
           <option value={b.id} selected={b.id === defaultBackend}>{b.label}</option>
@@ -59,12 +61,22 @@ const error = Astro.url.searchParams.get('error') || '';
     </label>
 
     <label>
-      <span>PicTime gallery URL (optional)</span>
+      <span>{t.guestLanguage}</span>
+      <select name="language">
+        <option value="">{t.langAuto}</option>
+        <option value="en">{t.langEnglish}</option>
+        <option value="es">{t.langSpanish}</option>
+      </select>
+      <small style="display:block;color:#6f6a5e;font-size:11px;margin-top:6px;">{t.guestLanguageHelp}</small>
+    </label>
+
+    <label>
+      <span>{t.pictimeOptional}</span>
       <input type="url" name="pictime_gallery_url" placeholder="https://pictime.example/your-gallery" />
     </label>
 
     <div style="margin-top:8px;">
-      <button type="submit" class="primary-btn">Create event</button>
+      <button type="submit" class="primary-btn">{t.createEvent}</button>
     </div>
   </form>
 

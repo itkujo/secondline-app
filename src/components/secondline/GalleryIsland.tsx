@@ -4,15 +4,17 @@
  */
 
 import { useState } from 'react';
+import { getMessages, type Locale } from '@/lib/i18n';
 import type { PublicAsset } from '@/lib/secondline/types';
 
-interface Props { slug: string; initialAssets: PublicAsset[]; }
+interface Props { slug: string; initialAssets: PublicAsset[]; locale?: Locale; }
 
-export default function GalleryIsland({ initialAssets }: Props) {
+export default function GalleryIsland({ initialAssets, locale = 'en' }: Props) {
+  const t = getMessages(locale).gallery;
   const [active, setActive] = useState<PublicAsset | null>(null);
 
   if (initialAssets.length === 0) {
-    return <p style={{ color: '#b8b2a5' }}>No uploads yet.</p>;
+    return <p style={{ color: '#b8b2a5' }}>{t.noUploads}</p>;
   }
   return (
     <>

@@ -12,6 +12,7 @@ import { listAssetsForEvent } from '@/lib/secondline/assets';
 import { isValidSlugShape } from '@/lib/secondline/slugs';
 import { renderQrSvg } from '@/lib/secondline/qr';
 import { getEnv } from '@/lib/env';
+import { getMessages, resolveLocale } from '@/lib/i18n';
 import type { PublicAsset, AssetRow } from '@/lib/secondline/types';
 
 export const prerender = false;
@@ -40,14 +41,17 @@ const isKiosk = Astro.url.searchParams.get('kiosk') === '1';
 const showQr = !event.wall_hide_qr;
 const base = getEnv('SECONDLINE_PUBLIC_URL') || 'https://secondline.smile-nola.com';
 const qrSvg = showQr ? await renderQrSvg(`${base}/u/${slug}`, { size: 180 }) : null;
+
+const locale = resolveLocale(Astro.request, event.language);
+const t = getMessages(locale);
 ---
 <!doctype html>
-<html lang="en">
+<html lang={locale}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
-    <title>Wall · Second Line</title>
+    <title>{t.wall.pageTitle}</title>
     <style>
       :root { color-scheme: dark; }
       html, body { margin: 0; padding: 0; background: #050505; color: #f8f4ea; height: 100%; overflow: hidden;
@@ -61,18 +65,18 @@ const qrSvg = showQr ? await renderQrSvg(`${base}/u/${slug}`, { size: 180 }) : n
                   dwellMs={event.wall_dwell_ms} crossfadeMs={event.wall_crossfade_ms}
                   videoMaxMs={event.wall_video_max_ms} videoFull={!!event.wall_video_full}
                   hideBg={!!event.wall_hide_bg} hideCaption={!!event.wall_hide_caption}
-                  transition={event.wall_transition}
+                  transition={event.wall_transition} locale={locale}
                   bgUrl={event.wall_bg_key ? `/m/${slug}/bg?v=${encodeURIComponent(event.wall_bg_key)}` : null} />
     </div>
     {showQr && (
       <div class="wall-qr">
-        <p>Scan to view or add photos!</p>
+        <p>{t.wall.scanToView}</p>
         <div class="wall-qr-code" set:html={qrSvg}></div>
       </div>
     )}
     <div class="wall-badge">
       <span class="heart">♥</span>
-      <span>Made with</span>
+      <span>{t.common.madeWith}</span>
       <span class="brand">Smile NOLA</span>
     </div>
     {/* is:global — Astro's scoped-style hash does not get applied to these

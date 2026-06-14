@@ -42,6 +42,25 @@ The upload page's "Trouble uploading?" panel surfaces a per-device support code
 `[secondline] upload failed (ref=SL-XXXX slug=...) <error>` — grep that ref to
 find a guest's exact session.
 
+## Bilingual (EN/ES)
+
+Second Line is bilingual. All user-facing copy lives in `src/lib/i18n/messages.ts`
+(`en` is the source of truth; `es` is typed `Messages = typeof en`, so the
+compiler rejects any missing/mistyped Spanish key). Resolution cascade, highest
+priority first (see `src/lib/i18n/index.ts`):
+
+1. **Guest toggle** — the `sl_lang` cookie, set by `LangToggle.astro`
+2. **Per-event setting** — `events.language` (`'en'|'es'|null`), set in admin
+3. **Browser auto-detect** — the `Accept-Language` header
+4. **Default** — English
+
+`.astro` pages call `resolveLocale(Astro.request, event?.language)` and pass the
+locale to React islands as a `locale` prop (islands call `getMessages(locale)`).
+Admin/landing surfaces read `Astro.locals.locale` (set in middleware, no event
+context). Emails render in `events.language` only (no browser context at send
+time). When adding copy, add the key to BOTH `en` and `es` — never hardcode a
+user-facing string.
+
 ## Critical proxy lesson (from smile-nola operational experience)
 
 Never gate runtime behavior on `request.url.hostname` / `Astro.url.hostname`.

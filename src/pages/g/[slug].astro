@@ -7,9 +7,11 @@
  * sharable with their guests by them).
  */
 import GalleryIsland from '@/components/secondline/GalleryIsland';
+import LangToggle from '@/components/secondline/LangToggle.astro';
 import { getEventBySlug } from '@/lib/secondline/events';
 import { listAssetsForEvent } from '@/lib/secondline/assets';
 import { isValidSlugShape } from '@/lib/secondline/slugs';
+import { getMessages, resolveLocale } from '@/lib/i18n';
 import type { PublicAsset, AssetRow } from '@/lib/secondline/types';
 
 export const prerender = false;
@@ -23,6 +25,9 @@ if (event.status === 'expired') {
   return Astro.redirect('/404');
 }
 
+const locale = resolveLocale(Astro.request, event.language);
+const t = getMessages(locale).gallery;
+
 const rows = listAssetsForEvent(event.id);
 const initialAssets: PublicAsset[] = rows.map((r: AssetRow) => ({
   id: r.id,
@@ -34,12 +39,12 @@ const initialAssets: PublicAsset[] = rows.map((r: AssetRow) => ({
 }));
 ---
 <!doctype html>
-<html lang="en">
+<html lang={locale}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
-    <title>Gallery · Second Line</title>
+    <title>{t.pageTitle}</title>
     <style>
       :root { color-scheme: dark; }
       html, body { margin: 0; padding: 0; background: #050505; color: #f8f4ea; font-family: system-ui, sans-serif; }
@@ -52,23 +57,25 @@ const initialAssets: PublicAsset[] = rows.map((r: AssetRow) => ({
         text-decoration: none; border: 1px solid #d4af37; background: #d4af37; color: #050505;
       }
       a.cta.secondary { background: transparent; color: #d4af37; }
+      .topline { display: flex; justify-content: flex-end; margin-bottom: 8px; }
     </style>
   </head>
   <body>
     <main class="wrap">
-      <h1>Your event gallery</h1>
-      <p class="lead">All the photos and videos guests shared during the event.</p>
+      <div class="topline"><LangToggle locale={locale} /></div>
+      <h1>{t.heading}</h1>
+      <p class="lead">{t.lead}</p>
 
       <div class="cta-row">
-        <a class="cta" href={`/api/events/${slug}/zip`} download>Download all as ZIP</a>
+        <a class="cta" href={`/api/events/${slug}/zip`} download>{t.downloadZip}</a>
         {event.pictime_gallery_url && (
           <a class="cta secondary" href={event.pictime_gallery_url} target="_blank" rel="noopener">
-            Buy prints from this event →
+            {t.buyPrints}
           </a>
         )}
       </div>
 
-      <GalleryIsland client:load slug={slug} initialAssets={initialAssets} />
+      <GalleryIsland client:load slug={slug} initialAssets={initialAssets} locale={locale} />
     </main>
   </body>
 </html>

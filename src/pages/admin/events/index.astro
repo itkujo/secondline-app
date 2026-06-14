@@ -5,8 +5,11 @@
  */
 import AdminLayout from '@/layouts/AdminLayout.astro';
 import { getDb } from '@/lib/db';
+import { getMessages } from '@/lib/i18n';
 
 export const prerender = false;
+
+const t = getMessages(Astro.locals.locale).admin;
 
 const rows = getDb().prepare(`
   SELECT e.id, e.slug, e.storage_backend_id, e.status, e.expires_at, e.first_upload_at, e.created_at,
@@ -24,26 +27,26 @@ const rows = getDb().prepare(`
   host_email: string; event_date: string; asset_count: number;
 }>;
 ---
-<AdminLayout section="events" title="Events">
+<AdminLayout section="events" title={t.eventsTitle}>
   <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
     <div>
-      <h1 style="margin:0 0 4px;">Events</h1>
-      <p style="color:#b8b2a5;margin:0;">Second Line walls and galleries.</p>
+      <h1 style="margin:0 0 4px;">{t.eventsTitle}</h1>
+      <p style="color:#b8b2a5;margin:0;">{t.eventsSub}</p>
     </div>
-    <a href="/admin/events/new" class="primary-btn">+ New event</a>
+    <a href="/admin/events/new" class="primary-btn">{t.newEventBtn}</a>
   </div>
 
   <div class="table-wrap">
     <table class="rows">
       <thead>
         <tr>
-          <th>Created</th>
-          <th>Host</th>
-          <th>Event date</th>
-          <th>Slug</th>
-          <th>Backend</th>
-          <th>Assets</th>
-          <th>Status</th>
+          <th>{t.colCreated}</th>
+          <th>{t.colHost}</th>
+          <th>{t.colEventDate}</th>
+          <th>{t.colSlug}</th>
+          <th>{t.colBackend}</th>
+          <th>{t.colAssets}</th>
+          <th>{t.colStatus}</th>
           <th></th>
         </tr>
       </thead>
@@ -56,12 +59,12 @@ const rows = getDb().prepare(`
             <td><code>{r.slug}</code></td>
             <td>{r.storage_backend_id}</td>
             <td>{r.asset_count}</td>
-            <td><span class={`status-pill is-${r.status}`}>{r.status}</span></td>
-            <td><a href={`/admin/events/${r.id}`} class="chip">Open</a></td>
+            <td><span class={`status-pill is-${r.status}`}>{r.status === 'expired' ? t.statusExpired : t.statusActive}</span></td>
+            <td><a href={`/admin/events/${r.id}`} class="chip">{t.open}</a></td>
           </tr>
         ))}
         {rows.length === 0 && (
-          <tr><td colspan="8" class="empty">No events yet. <a href="/admin/events/new" style="color:#d4af37;">Create the first one</a>.</td></tr>
+          <tr><td colspan="8" class="empty">{t.noEvents} <a href="/admin/events/new" style="color:#d4af37;">{t.createFirst}</a>.</td></tr>
         )}
       </tbody>
     </table>

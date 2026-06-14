@@ -14,6 +14,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { getMessages, type Locale } from '@/lib/i18n';
 
 type TileState = 'preparing' | 'uploading' | 'ok' | 'failed';
 
@@ -28,7 +29,7 @@ interface Tile {
   error?: string;
 }
 
-interface Props { slug: string; }
+interface Props { slug: string; locale?: Locale; }
 
 const NAME_STORAGE_KEY = 'sn_uploader_name';
 
@@ -56,11 +57,14 @@ function newTileId(): string {
   return `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function oversizeError(file: File): string | null {
+type UploadMessages = ReturnType<typeof getMessages>['upload'];
+
+function oversizeError(file: File, t: UploadMessages): string | null {
   const isVideo = file.type.toLowerCase().startsWith('video/');
   const max = isVideo ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
   if (file.size <= max) return null;
-  return `${isVideo ? 'Video' : 'Photo'} too large (max ${Math.round(max / 1024 / 1024)} MB)`;
+  const mb = Math.round(max / 1024 / 1024);
+  return isVideo ? t.videoTooLarge(mb) : t.photoTooLarge(mb);
 }
 
 function isHeic(file: File): boolean {
@@ -138,7 +142,8 @@ function isRetryable(status: number): boolean {
   return status === 0 || status >= 500 || status === 408 || status === 429;
 }
 
-export default function UploadIsland({ slug }: Props) {
+export default function UploadIsland({ slug, locale = 'en' }: Props) {
+  const t = getMessages(locale).upload;
   const [name, setName] = useState('');
   const [tiles, setTiles] = useState<Tile[]>([]);
   const [errorLog, setErrorLog] = useState<ErrLogEntry[]>([]);
@@ -199,7 +204,7 @@ export default function UploadIsland({ slug }: Props) {
     if (trimmed) localStorage.setItem(NAME_STORAGE_KEY, trimmed);
 
     const newTiles: Tile[] = files.map(f => {
-      const tooBig = oversizeError(f);
+      const tooBig = oversizeError(f, t);
       return {
         id: newTileId(),
         name: f.name,
@@ -222,7 +227,7 @@ export default function UploadIsland({ slug }: Props) {
         await uploadWithRetry(tile.id, ready, trimmed);
       } catch (err) {
         console.error('[secondline] HEIC conversion failed', err);
-        patchTile(tile.id, { state: 'failed', error: "Couldn't prepare this photo" });
+        patchTile(tile.id, { state: 'failed', error: t.heicFailed });
       }
     }
   }
@@ -272,12 +277,12 @@ export default function UploadIsland({ slug }: Props) {
     <div>
       <style>{'@keyframes sn-spin { to { transform: rotate(360deg) } }'}</style>
       <label style={{ display: 'block', fontSize: 13, color: '#b8b2a5', marginBottom: 6 }}>
-        Your name (optional)
+        {t.nameLabel}
         <input
           type="text"
           value={name}
           onChange={e => setName(e.target.value)}
-          placeholder="So the couple knows who shared"
+          placeholder={t.namePlaceholder}
           autoComplete="name"
           maxLength={80}
           style={{ display: 'block', width: '100%', padding: '10px 12px', fontSize: 16, borderRadius: 8,
@@ -290,7 +295,7 @@ export default function UploadIsland({ slug }: Props) {
         style={{ display: 'block', marginTop: 18, padding: '18px 16px', textAlign: 'center',
                  borderRadius: 14, border: '2px dashed #d4af37', color: '#d4af37',
                  fontSize: 18, fontWeight: 600, cursor: 'pointer', background: 'rgba(212,175,55,0.05)' }}>
-        Tap to choose photos or videos
+        {t.tapToChoose}
       </label>
       <input
         ref={fileRef}
@@ -304,51 +309,51 @@ export default function UploadIsland({ slug }: Props) {
 
       {tiles.length > 0 && (
         <p style={{ color: '#b8b2a5', fontSize: 13, marginTop: 18 }}>
-          {stats.ok} done · {stats.inflight} uploading · {stats.fail} failed
+          {t.statsLine(stats.ok, stats.inflight, stats.fail)}
         </p>
       )}
 
       <ul style={{ listStyle: 'none', padding: 0, margin: '12px 0 0', display: 'grid',
                    gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 8 }}>
-        {tiles.map(t => {
-          const pct = Math.round(t.progress * 100);
+        {tiles.map(tile => {
+          const pct = Math.round(tile.progress * 100);
           return (
-            <li key={t.id} style={{ position: 'relative', aspectRatio: '1 / 1', borderRadius: 8,
+            <li key={tile.id} style={{ position: 'relative', aspectRatio: '1 / 1', borderRadius: 8,
                                     overflow: 'hidden', background: '#111' }}>
-              <img src={t.previewUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover',
-                                                      filter: t.state === 'ok' ? 'none' : 'brightness(0.6)' }} />
+              <img src={tile.previewUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover',
+                                                      filter: tile.state === 'ok' ? 'none' : 'brightness(0.6)' }} />
               <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', gap: 6,
                             alignItems: 'center', justifyContent: 'center',
                             color: '#fff', fontSize: 13, fontWeight: 700, textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}>
-                {t.state === 'ok' && <span style={{ fontSize: 22 }}>✓</span>}
-                {t.state === 'preparing' && (
+                {tile.state === 'ok' && <span style={{ fontSize: 22 }}>✓</span>}
+                {tile.state === 'preparing' && (
                   <>
-                    <span style={SPINNER_STYLE} aria-label="Preparing" role="status" />
-                    <span style={{ fontSize: 11, fontWeight: 600 }}>Preparing…</span>
+                    <span style={SPINNER_STYLE} aria-label={t.preparingAria} role="status" />
+                    <span style={{ fontSize: 11, fontWeight: 600 }}>{t.preparing}</span>
                   </>
                 )}
-                {t.state === 'uploading' && (
-                  <span style={{ fontSize: 15, fontWeight: 700 }} aria-label={`Uploading ${pct}%`} role="status">
+                {tile.state === 'uploading' && (
+                  <span style={{ fontSize: 15, fontWeight: 700 }} aria-label={t.uploadingAria(pct)} role="status">
                     {pct}%
-                    {t.attempt > 0 && (
+                    {tile.attempt > 0 && (
                       <span style={{ display: 'block', fontSize: 10, fontWeight: 500, color: '#e0c074' }}>
-                        retry {t.attempt}
+                        {t.retry(tile.attempt)}
                       </span>
                     )}
                   </span>
                 )}
-                {t.state === 'failed' && (
+                {tile.state === 'failed' && (
                   <span style={{ padding: '0 8px', textAlign: 'center' }}>
                     <span style={{ color: '#e08585', fontSize: 18 }}>!</span>
                     <span style={{ display: 'block', fontSize: 11, fontWeight: 500, marginTop: 2 }}>
-                      {t.error ?? 'Upload failed'}
+                      {tile.error ?? t.uploadFailed}
                     </span>
                   </span>
                 )}
               </div>
 
               {/* Real progress bar pinned to the bottom of the tile. */}
-              {t.state === 'uploading' && (
+              {tile.state === 'uploading' && (
                 <div aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 5,
                                                  background: 'rgba(0,0,0,0.45)' }}>
                   <div style={{ height: '100%', width: `${pct}%`, background: '#d4af37',
@@ -357,11 +362,11 @@ export default function UploadIsland({ slug }: Props) {
               )}
 
               {/* Size label, bottom-left, for a little more at-a-glance info. */}
-              {t.state !== 'failed' && (
+              {tile.state !== 'failed' && (
                 <span style={{ position: 'absolute', left: 4, top: 4, fontSize: 10, fontWeight: 600, color: '#fff',
                                background: 'rgba(0,0,0,0.5)', borderRadius: 4, padding: '1px 5px',
                                textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}>
-                  {humanSize(t.size)}
+                  {humanSize(tile.size)}
                 </span>
               )}
             </li>
@@ -374,14 +379,14 @@ export default function UploadIsland({ slug }: Props) {
           appears in the server logs. */}
       <details style={{ marginTop: 26, borderTop: '1px solid #2a2a2a', paddingTop: 14 }}>
         <summary style={{ cursor: 'pointer', color: '#b8b2a5', fontSize: 13, userSelect: 'none' }}>
-          Trouble uploading?
+          {t.trouble}
         </summary>
         <div style={{ marginTop: 12 }}>
           <p style={{ margin: '0 0 10px', fontSize: 13, color: '#b8b2a5' }}>
-            Read the host your support code, or tap Copy and send the details:
+            {t.troubleIntro}
           </p>
           <p style={{ margin: '0 0 12px', fontSize: 13, color: '#b8b2a5' }}>
-            Support code:{' '}
+            {t.supportCode}{' '}
             <strong style={{ color: '#d4af37', fontSize: 17, letterSpacing: '0.1em' }}>{supportCode || '…'}</strong>
           </p>
           <textarea
@@ -397,7 +402,7 @@ export default function UploadIsland({ slug }: Props) {
             onClick={copyDiagnostics}
             style={{ marginTop: 8, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
                      borderRadius: 999, border: '1px solid #d4af37', background: 'transparent', color: '#d4af37' }}>
-            {copied ? 'Copied ✓' : 'Copy for support'}
+            {copied ? t.copied : t.copyForSupport}
           </button>
         </div>
       </details>

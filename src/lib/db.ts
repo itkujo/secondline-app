@@ -67,6 +67,7 @@ export function bootstrapSchema(db: Db): void {
       wall_hide_caption INTEGER NOT NULL DEFAULT 0,
       wall_transition TEXT NOT NULL DEFAULT 'crossfade',
       wall_bg_key TEXT,
+      language TEXT,
       created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
     );
     CREATE INDEX IF NOT EXISTS idx_events_status  ON events(status);
@@ -100,6 +101,7 @@ export function bootstrapSchema(db: Db): void {
   addColumnIfMissing(db, 'events', 'wall_hide_caption', `wall_hide_caption INTEGER NOT NULL DEFAULT 0`);
   addColumnIfMissing(db, 'events', 'wall_transition', `wall_transition TEXT NOT NULL DEFAULT 'crossfade'`);
   addColumnIfMissing(db, 'events', 'wall_bg_key', `wall_bg_key TEXT`);
+  addColumnIfMissing(db, 'events', 'language', `language TEXT`);
 }
 
 function addColumnIfMissing(db: Db, table: string, column: string, ddl: string): void {

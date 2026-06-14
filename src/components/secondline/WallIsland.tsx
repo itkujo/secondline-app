@@ -18,6 +18,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { getMessages, type Locale } from '@/lib/i18n';
 import type { PublicAsset, SseMessage } from '@/lib/secondline/types';
 
 interface Props {
@@ -33,6 +34,7 @@ interface Props {
   hideCaption?: boolean;   // per-event admin setting; hide uploader captions
   transition?: string;     // per-event admin setting; hero transition style
   bgUrl?: string | null;   // per-event admin setting; custom backdrop image
+  locale?: Locale;         // resolved display locale (per-event default / toggle)
 }
 
 // Hero enter/exit keyframe pairs, keyed by the wall_transition setting.
@@ -56,7 +58,8 @@ export default function WallIsland({ slug, initialAssets, initialSince, kiosk,
                                      dwellMs = PHOTO_DWELL_MS, crossfadeMs = CROSSFADE_MS,
                                      videoMaxMs = VIDEO_MAX_MS, videoFull = false,
                                      hideBg = false, hideCaption = false,
-                                     transition = 'crossfade', bgUrl = null }: Props) {
+                                     transition = 'crossfade', bgUrl = null, locale = 'en' }: Props) {
+  const t = getMessages(locale).wall;
   const [assets, setAssets] = useState<PublicAsset[]>(initialAssets);
   const [heroIdx, setHeroIdx] = useState(0);
   const [prevIdx, setPrevIdx] = useState<number | null>(null);
@@ -216,7 +219,7 @@ export default function WallIsland({ slug, initialAssets, initialSince, kiosk,
           {!hero && (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
                           justifyContent: 'center', textAlign: 'center', color: '#b8b2a5' }}>
-              Waiting for the first upload…
+              {t.waitingFirst}
             </div>
           )}
           {hero?.uploader_name && !hideCaption && (
@@ -224,7 +227,7 @@ export default function WallIsland({ slug, initialAssets, initialSince, kiosk,
                           color: '#f8f4ea', fontSize: 'clamp(14px, 1.6vw, 22px)',
                           textShadow: '0 1px 4px rgba(0,0,0,0.8)', opacity: 0.9,
                           transition: `opacity ${crossfadeMs}ms ease-in-out`, pointerEvents: 'none' }}>
-              Shared by {hero.uploader_name}
+              {t.sharedBy(hero.uploader_name)}
             </div>
           )}
         </div>
@@ -236,7 +239,7 @@ export default function WallIsland({ slug, initialAssets, initialSince, kiosk,
           <button onClick={toggleFullscreen}
                   style={{ background: 'rgba(0,0,0,0.6)', color: '#d4af37', border: '1px solid #d4af37',
                            borderRadius: 999, padding: '10px 18px', fontSize: 14, cursor: 'pointer' }}>
-            Enter Fullscreen (F)
+            {t.enterFullscreen}
           </button>
         </div>
       )}

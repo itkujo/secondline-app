@@ -18,6 +18,7 @@
 import type { APIRoute } from 'astro';
 import { createEvent } from '@/lib/secondline/events';
 import { getBackend } from '@/lib/secondline/storage/backends';
+import { isLocale } from '@/lib/i18n';
 
 export const prerender = false;
 
@@ -35,6 +36,7 @@ export const POST: APIRoute = async ({ request }) => {
   const event_date = String(form.get('event_date') ?? '').trim();
   const storage_backend_id = String(form.get('storage_backend_id') ?? '').trim();
   const pictime_raw = String(form.get('pictime_gallery_url') ?? '').trim();
+  const language_raw = String(form.get('language') ?? '').trim();
 
   if (!host_first_name || host_first_name.length > 80) return redirectErr('Host first name is required (≤80 chars)');
   if (!host_last_name || host_last_name.length > 80) return redirectErr('Host last name is required (≤80 chars)');
@@ -51,9 +53,11 @@ export const POST: APIRoute = async ({ request }) => {
     pictime_gallery_url = pictime_raw;
   }
 
+  const language = isLocale(language_raw) ? language_raw : null;
+
   const event = createEvent({
     host_first_name, host_last_name, host_email,
-    event_date, storage_backend_id, pictime_gallery_url,
+    event_date, storage_backend_id, pictime_gallery_url, language,
   });
 
   return new Response(null, {

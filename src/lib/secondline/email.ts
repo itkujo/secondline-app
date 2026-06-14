@@ -4,14 +4,26 @@
  * All inline HTML, brand-tinted (dark luxury, gold on near-black). Senders
  * call sendRawEmail from @/lib/email; this module owns only the templates
  * and the thin wrapper functions that map an EventRow into a send.
+ *
+ * Locale: emails go out in the event's configured language (events.language),
+ * falling back to English. There's no per-recipient browser context at send
+ * time, so the per-event setting is the only signal that applies here.
  */
 
 import { getEnv } from '@/lib/env';
 import { sendRawEmail } from '@/lib/email';
+import { getMessages, resolveLocale, type Locale } from '@/lib/i18n';
 import type { EventRow } from './types';
 
 function publicBase(): string {
   return getEnv('SECONDLINE_PUBLIC_URL') || 'https://secondline.smile-nola.com';
+}
+
+/** Locale for an event's emails: the per-event setting, else English. */
+function eventLocale(event: EventRow): Locale {
+  // resolveLocale with a synthetic header-less request reduces to:
+  // event.language (if valid) -> default. No cookie/Accept-Language here.
+  return resolveLocale(new Request('https://secondline.smile-nola.com'), event.language);
 }
 
 function esc(s: string | null | undefined): string {
@@ -21,8 +33,8 @@ function esc(s: string | null | undefined): string {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-function shell(inner: string): string {
-  return `<!doctype html><html><body style="margin:0;padding:0;background:#050505;color:#f8f4ea;font-family:Helvetica,Arial,sans-serif;">
+function shell(inner: string, locale: Locale): string {
+  return `<!doctype html><html lang="${locale}"><body style="margin:0;padding:0;background:#050505;color:#f8f4ea;font-family:Helvetica,Arial,sans-serif;">
   <div style="max-width:560px;margin:0 auto;padding:32px 24px;">${inner}</div></body></html>`;
 }
 
@@ -39,41 +51,47 @@ function buttonHtml(label: string, href: string): string {
 
 export function renderGalleryReadyHtml(event: EventRow, base?: string): string {
   const b = base || publicBase();
+  const locale = eventLocale(event);
+  const t = getMessages(locale).email;
   const galleryUrl = `${b}/g/${event.slug}`;
   const zipUrl = `${b}/api/events/${event.slug}/zip`;
   return shell(`
     ${brandHeader()}
-    <h1 style="font-size:22px;margin:0 0 12px;">Your event gallery is ready</h1>
-    <p style="color:#cfc7b3;line-height:1.55;">Hi ${esc(event.host_first_name)}, here's everything your guests shared during the event.</p>
-    <p style="margin:28px 0;">${buttonHtml('View gallery', galleryUrl)}</p>
+    <h1 style="font-size:22px;margin:0 0 12px;">${esc(t.galleryReadyHeading)}</h1>
+    <p style="color:#cfc7b3;line-height:1.55;">${esc(t.galleryReadyGreeting(event.host_first_name))}</p>
+    <p style="margin:28px 0;">${buttonHtml(t.viewGallery, galleryUrl)}</p>
     <p style="color:#b8b2a5;font-size:14px;line-height:1.55;">
-      You can also <a href="${esc(zipUrl)}" style="color:#d4af37;">download everything as a ZIP</a>.
+      ${esc(t.alsoDownloadPre)}<a href="${esc(zipUrl)}" style="color:#d4af37;">${esc(t.alsoDownloadLink)}</a>${esc(t.alsoDownloadPost)}
     </p>
     <p style="color:#9a9484;font-size:12px;margin-top:32px;">
-      Your guest gallery is available for 180 days from your event date.
+      ${esc(t.retentionNote)}
     </p>
-  `);
+  `, locale);
 }
 
 export function renderExpiryWarningHtml(event: EventRow, base: string, daysLeft: number): string {
   const b = base || publicBase();
+  const locale = eventLocale(event);
+  const t = getMessages(locale).email;
   const zipUrl = `${b}/api/events/${event.slug}/zip`;
   return shell(`
     ${brandHeader()}
-    <h1 style="font-size:22px;margin:0 0 12px;">Your guest gallery expires in ${daysLeft} days</h1>
-    <p style="color:#cfc7b3;line-height:1.55;">Hi ${esc(event.host_first_name)}, your Second Line gallery will be cleared in ${daysLeft} days. Grab everything as a ZIP now so you have a copy.</p>
-    <p style="margin:28px 0;">${buttonHtml('Download all as ZIP', zipUrl)}</p>
-    ${event.pictime_gallery_url ? `<p style="color:#b8b2a5;font-size:14px;">After that, you'll still be able to <a href="${esc(event.pictime_gallery_url)}" style="color:#d4af37;">order prints from PicTime</a>.</p>` : ''}
-  `);
+    <h1 style="font-size:22px;margin:0 0 12px;">${esc(t.expiryHeading(daysLeft))}</h1>
+    <p style="color:#cfc7b3;line-height:1.55;">${esc(t.expiryBody(event.host_first_name, daysLeft))}</p>
+    <p style="margin:28px 0;">${buttonHtml(t.downloadZip, zipUrl)}</p>
+    ${event.pictime_gallery_url ? `<p style="color:#b8b2a5;font-size:14px;">${esc(t.expiryPrintsPre)}<a href="${esc(event.pictime_gallery_url)}" style="color:#d4af37;">${esc(t.expiryPrintsLink)}</a>${esc(t.expiryPrintsPost)}</p>` : ''}
+  `, locale);
 }
 
 export function renderExpiredHtml(event: EventRow): string {
+  const locale = eventLocale(event);
+  const t = getMessages(locale).email;
   return shell(`
     ${brandHeader()}
-    <h1 style="font-size:22px;margin:0 0 12px;">Your guest gallery has been archived</h1>
-    <p style="color:#cfc7b3;line-height:1.55;">Hi ${esc(event.host_first_name)}, your Second Line gallery from your event on ${esc(event.event_date)} has reached its 180-day end. Prints are still available on PicTime:</p>
-    <p style="margin:28px 0;">${buttonHtml('Order prints', event.pictime_gallery_url || 'https://smile-nola.com')}</p>
-  `);
+    <h1 style="font-size:22px;margin:0 0 12px;">${esc(t.expiredHeading)}</h1>
+    <p style="color:#cfc7b3;line-height:1.55;">${esc(t.expiredBody(event.host_first_name, event.event_date))}</p>
+    <p style="margin:28px 0;">${buttonHtml(t.orderPrints, event.pictime_gallery_url || 'https://smile-nola.com')}</p>
+  `, locale);
 }
 
 // ---- Send wrappers ----
@@ -82,7 +100,7 @@ export async function sendGalleryReady(event: EventRow): Promise<void> {
   if (!event.host_email) return;
   await sendRawEmail({
     to: event.host_email,
-    subject: `Your event gallery is ready — Smile NOLA`,
+    subject: getMessages(eventLocale(event)).email.galleryReadySubject,
     html: renderGalleryReadyHtml(event),
   });
 }
@@ -91,7 +109,7 @@ export async function sendExpiryWarning(event: EventRow, daysLeft: number): Prom
   if (!event.host_email) return;
   await sendRawEmail({
     to: event.host_email,
-    subject: `Your gallery expires in ${daysLeft} days — Smile NOLA`,
+    subject: getMessages(eventLocale(event)).email.expirySubject(daysLeft),
     html: renderExpiryWarningHtml(event, publicBase(), daysLeft),
   });
 }
@@ -100,7 +118,7 @@ export async function sendExpiredNotice(event: EventRow): Promise<void> {
   if (!event.host_email) return;
   await sendRawEmail({
     to: event.host_email,
-    subject: `Your guest gallery has been archived — Smile NOLA`,
+    subject: getMessages(eventLocale(event)).email.expiredSubject,
     html: renderExpiredHtml(event),
   });
 }

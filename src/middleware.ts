@@ -15,6 +15,7 @@
 
 import { defineMiddleware } from 'astro:middleware';
 import { isAuthed } from '@/lib/auth';
+import { resolveLocale } from '@/lib/i18n';
 
 const EXEMPT_PATHS = new Set<string>([
   '/admin/login',
@@ -22,8 +23,12 @@ const EXEMPT_PATHS = new Set<string>([
   '/api/admin/logout',
 ]);
 
-export const onRequest = defineMiddleware(async ({ request, url, redirect }, next) => {
+export const onRequest = defineMiddleware(async ({ request, url, redirect, locals }, next) => {
   const path = url.pathname;
+
+  // Resolve a request-level locale for surfaces without an event context
+  // (landing, admin). Event pages override this with their per-event default.
+  locals.locale = resolveLocale(request);
   const isAdminPage = path.startsWith('/admin/') || path === '/admin';
   const isAdminApi = path.startsWith('/api/admin/') || path === '/api/admin';
 

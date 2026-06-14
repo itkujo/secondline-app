@@ -10,6 +10,13 @@
  */
 import DemoWall from '@/components/secondline/DemoWall';
 import SecondLineLogo from '@/components/secondline/SecondLineLogo.astro';
+import LangToggle from '@/components/secondline/LangToggle.astro';
+import { getMessages, resolveLocale } from '@/lib/i18n';
+
+export const prerender = false;
+
+const locale = resolveLocale(Astro.request);
+const t = getMessages(locale).landing;
 
 const year = new Date().getFullYear();
 const BOOK_URL = 'https://smile-nola.com/contact';
@@ -20,38 +27,21 @@ const demoImages = [8, 1, 6, 2, 10, 3, 7, 4, 9].map(n => `/demo/demo-${n}.jpg`);
 // Fake uploader names cycled with the photos to sell the live-share feel.
 const demoNames = ['Marie', 'DJ Tee', 'Aunt Rose', 'The Beauchamps', 'Andre', 'Camille', 'Big Mike', 'Yvette', 'The DJ'];
 
-const faqs = [
-  {
-    q: 'How do guests add photos?',
-    a: 'They scan the QR code on the wall or on your table cards — no app to download, no account to make. Snap, share, and it appears on the big screen in seconds.',
-  },
-  {
-    q: 'How long do the photos stay up?',
-    a: 'Every event gallery stays live for 180 days, so guests can revisit and download long after the last dance.',
-  },
-  {
-    q: 'Who can see our photos?',
-    a: 'Galleries are private and link-only — there is no public directory and links are unguessable. Only people you share the link with can view them.',
-  },
-  {
-    q: 'Do we get the original files?',
-    a: 'Yes. Hosts get a full-resolution ZIP download of every photo and video shared during the event.',
-  },
-];
+const faqs = t.faqs;
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang={locale}>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <title>Second Line — Live Event Photo Walls in New Orleans | Smile NOLA</title>
-    <meta name="description" content="Second Line by Smile NOLA turns your guests' phones into a live photo wall. They scan a QR code, snap photos, and watch them appear on the big screen in seconds. No app, no logins." />
+    <title>{t.metaTitle}</title>
+    <meta name="description" content={t.metaDescription} />
     <link rel="canonical" href="https://secondline.smile-nola.com/" />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Second Line — Live Event Photo Walls by Smile NOLA" />
-    <meta property="og:description" content="Your guests snap photos from their phones. They appear on the big screen in seconds. No app, no logins — just a QR code and a room full of cameras." />
+    <meta property="og:title" content={t.ogTitle} />
+    <meta property="og:description" content={t.ogDescription} />
     <meta property="og:url" content="https://secondline.smile-nola.com/" />
     <meta property="og:image" content="https://secondline.smile-nola.com/demo/demo-6.jpg" />
     <meta name="twitter:card" content="summary_large_image" />
@@ -101,6 +91,7 @@ const faqs = [
         border-bottom: 1px solid var(--line);
       }
       .nav { display: flex; align-items: center; justify-content: space-between; height: 4.5rem; }
+      .nav .nav-actions { display: flex; align-items: center; gap: 0.85rem; }
       .nav .logo { display: flex; align-items: center; text-decoration: none; }
       .nav .logo .by { margin-left: 0.85rem; padding-left: 0.85rem; border-left: 1px solid var(--line);
                        font-size: 0.72rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
@@ -186,7 +177,10 @@ const faqs = [
           <SecondLineLogo size="1.15rem" />
           <span class="by">by Smile NOLA</span>
         </a>
-        <a class="btn btn-primary" href={BOOK_URL}>Book your event</a>
+        <div class="nav-actions">
+          <LangToggle locale={locale} />
+          <a class="btn btn-primary" href={BOOK_URL}>{t.bookEvent}</a>
+        </div>
       </div>
     </header>
 
@@ -198,25 +192,21 @@ const faqs = [
             <h1 class="brand-h1"><SecondLineLogo size="clamp(3rem, 8vw, 5.5rem)" /></h1>
             <p class="by-line">
               by <img class="smile-mark" src="/smile-nola-logo.svg" alt="Smile NOLA" />
-              <span class="sep">· New Orleans</span>
+              <span class="sep">· {t.location}</span>
             </p>
-            <p class="hero-tagline">Your event, <span class="accent">live on the wall.</span></p>
-            <p class="lede">
-              Guests snap photos from their phones and watch them appear on the big
-              screen in seconds. No app, no logins — just a QR code and a room full
-              of cameras, all feeding one beautiful live wall.
-            </p>
+            <p class="hero-tagline">{t.taglineLead} <span class="accent">{t.taglineAccent}</span></p>
+            <p class="lede">{t.lede}</p>
             <div class="cta-row">
-              <a class="btn btn-primary" href={BOOK_URL}>Book Second Line for your event</a>
-              <a class="btn btn-ghost" href="#how">See how it works</a>
+              <a class="btn btn-primary" href={BOOK_URL}>{t.ctaBook}</a>
+              <a class="btn btn-ghost" href="#how">{t.ctaSeeHow}</a>
             </div>
           </div>
           <div>
             <div class="screen">
-              <DemoWall client:load images={demoImages} names={demoNames} />
+              <DemoWall client:load images={demoImages} names={demoNames} locale={locale} />
             </div>
             <div class="screen-stand"></div>
-            <p class="screen-cap">A live wall, mid-celebration — this is what your guests see.</p>
+            <p class="screen-cap">{t.screenCaption}</p>
           </div>
         </div>
       </section>
@@ -225,24 +215,24 @@ const faqs = [
       <section class="band" id="how">
         <div class="wrap">
           <div class="section-head">
-            <h2>Three steps. Zero friction.</h2>
-            <p>From "scan this" to "look at the screen" in under a minute — no downloads, no sign-ups, no fuss.</p>
+            <h2>{t.howTitle}</h2>
+            <p>{t.howSub}</p>
           </div>
           <div class="steps">
             <div class="step">
               <span class="num">1</span>
-              <h3>Scan</h3>
-              <p>Guests point their camera at the QR code on the wall or table cards. The upload page opens right in their browser.</p>
+              <h3>{t.step1Title}</h3>
+              <p>{t.step1Body}</p>
             </div>
             <div class="step">
               <span class="num">2</span>
-              <h3>Share</h3>
-              <p>They pick a few favorite photos or videos, add their name, and tap share. That's the entire flow.</p>
+              <h3>{t.step2Title}</h3>
+              <p>{t.step2Body}</p>
             </div>
             <div class="step">
               <span class="num">3</span>
-              <h3>On the screen</h3>
-              <p>Their shots appear on the live wall within seconds, crossfading through the night for everyone to enjoy.</p>
+              <h3>{t.step3Title}</h3>
+              <p>{t.step3Body}</p>
             </div>
           </div>
         </div>
@@ -252,8 +242,8 @@ const faqs = [
       <section class="band">
         <div class="wrap">
           <div class="section-head">
-            <h2>Good to know</h2>
-            <p>The details hosts ask about most.</p>
+            <h2>{t.faqTitle}</h2>
+            <p>{t.faqSub}</p>
           </div>
           <div class="faq">
             {faqs.map((f) => (
@@ -269,17 +259,17 @@ const faqs = [
       <!-- Closing CTA -->
       <section class="band cta-band">
         <div class="wrap">
-          <h2>Ready to light up your next event?</h2>
-          <p>Weddings, receptions, parties, corporate nights — if there's a screen and a crowd, Second Line belongs there.</p>
-          <a class="btn btn-primary" href={BOOK_URL}>Book Second Line for your event</a>
+          <h2>{t.ctaBandTitle}</h2>
+          <p>{t.ctaBandSub}</p>
+          <a class="btn btn-primary" href={BOOK_URL}>{t.ctaBook}</a>
         </div>
       </section>
     </main>
 
     <footer class="site">
       <div class="wrap foot">
-        <span>Made with <span style="color: var(--gold)">♥</span> by <span class="brand">Smile NOLA</span> · &copy; {year}</span>
-        <a class="admin" href="/admin">Admin</a>
+        <span>{t.footerMadeBy} <span style="color: var(--gold)">♥</span> {t.footerBy} <span class="brand">Smile NOLA</span> · &copy; {year}</span>
+        <a class="admin" href="/admin">{t.admin}</a>
       </div>
     </footer>
   </body>

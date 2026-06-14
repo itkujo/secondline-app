@@ -9,6 +9,7 @@
 import { getDb } from '../db';
 import { getEnv } from '../env';
 import { generateSlug } from './slugs';
+import { isLocale } from '../i18n';
 import type { EventRow } from './types';
 
 const RETENTION_DAYS = 180;
@@ -32,15 +33,17 @@ export interface CreateEventInput {
   event_date: string;           // YYYY-MM-DD
   storage_backend_id?: string;  // defaults to SECONDLINE_ACTIVE_BACKEND
   pictime_gallery_url?: string | null;
+  language?: string | null;     // per-event default locale ('en'|'es'); null = auto-detect
 }
 
 export function createEvent(input: CreateEventInput): EventRow {
   const backend = input.storage_backend_id || defaultBackendId();
   const expires_at = computeExpiresAt(input.event_date);
+  const language = isLocale(input.language) ? input.language : null;
   const stmt = getDb().prepare(`
     INSERT INTO events (slug, storage_backend_id, host_first_name, host_last_name, host_email,
-                        event_date, pictime_gallery_url, expires_at, status, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP)
+                        event_date, pictime_gallery_url, expires_at, language, status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP)
     RETURNING *
   `);
   for (let attempt = 0; attempt < 8; attempt++) {
@@ -54,6 +57,7 @@ export function createEvent(input: CreateEventInput): EventRow {
         input.event_date,
         input.pictime_gallery_url ?? null,
         expires_at,
+        language,
       ) as unknown as EventRow;
     } catch (err: unknown) {
       const msg = String((err as Error)?.message ?? '');
@@ -73,6 +77,12 @@ export function getEventById(id: number): EventRow | null {
 
 export function setPicTimeUrl(eventId: number, url: string | null): void {
   getDb().prepare(`UPDATE events SET pictime_gallery_url = ? WHERE id = ?`).run(url, eventId);
+}
+
+/** Set the per-event default locale. Pass null to fall back to browser auto-detect. */
+export function setLanguage(eventId: number, language: string | null): void {
+  const value = isLocale(language) ? language : null;
+  getDb().prepare(`UPDATE events SET language = ? WHERE id = ?`).run(value, eventId);
 }
 
 export const WALL_TRANSITIONS = ['crossfade', 'slide', 'zoom', 'kenburns'] as const;

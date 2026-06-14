@@ -1,0 +1,70 @@
+---
+/**
+ * EN/ES language toggle.
+ *
+ * Self-contained, island-free: clicking a button writes the `sl_lang` cookie
+ * (the highest-priority signal in the i18n cascade) and reloads, so the SSR
+ * render comes back in the chosen language with no hydration flash. Drop it
+ * onto any guest or admin surface; the including page positions the wrapper.
+ */
+import { getMessages, type Locale } from '@/lib/i18n';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const m = getMessages(locale).common;
+---
+<div class="sl-lang-toggle" role="group" aria-label={m.toggleAria}>
+  <button type="button" data-sl-lang="en" class={locale === 'en' ? 'active' : ''}
+          aria-pressed={locale === 'en'} lang="en">{m.langShort.en}</button>
+  <button type="button" data-sl-lang="es" class={locale === 'es' ? 'active' : ''}
+          aria-pressed={locale === 'es'} lang="es">{m.langShort.es}</button>
+</div>
+
+<script>
+  // Keep the cookie name in sync with LOCALE_COOKIE in @/lib/i18n.
+  document.querySelectorAll<HTMLButtonElement>('.sl-lang-toggle button').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const lang = btn.dataset.slLang;
+      if (!lang || btn.classList.contains('active')) return;
+      document.cookie = `sl_lang=${lang}; path=/; max-age=31536000; samesite=lax`;
+      location.reload();
+    });
+  });
+</script>
+
+<style>
+  .sl-lang-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid rgba(212, 175, 55, 0.35);
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.35);
+  }
+  .sl-lang-toggle button {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: #b8b2a5;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 5px 11px;
+    border-radius: 999px;
+    cursor: pointer;
+    line-height: 1;
+    transition: color 0.15s ease, background 0.15s ease;
+  }
+  .sl-lang-toggle button:hover {
+    color: #d4af37;
+  }
+  .sl-lang-toggle button.active {
+    background: #d4af37;
+    color: #1a1206;
+    cursor: default;
+  }
+</style>

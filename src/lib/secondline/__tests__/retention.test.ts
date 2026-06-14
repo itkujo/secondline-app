@@ -14,7 +14,7 @@ function event(overrides: Partial<EventRow> = {}): EventRow {
     wall_dwell_ms: 5000, wall_crossfade_ms: 400,
     wall_video_max_ms: 30000, wall_video_full: 0,
     wall_hide_bg: 0, wall_hide_qr: 0, wall_hide_caption: 0,
-    wall_transition: 'crossfade', wall_bg_key: null,
+    wall_transition: 'crossfade', wall_bg_key: null, language: null,
     created_at: '2026-01-01T00:00:00Z',
     ...overrides,
   };

@@ -12,9 +12,10 @@
  */
 
 import type { APIRoute } from 'astro';
-import { getEventById, setBackend, setPicTimeUrl, setWallSettings, WALL_TRANSITIONS } from '@/lib/secondline/events';
+import { getEventById, setBackend, setLanguage, setPicTimeUrl, setWallSettings, WALL_TRANSITIONS } from '@/lib/secondline/events';
 import { countAssetsForEvent } from '@/lib/secondline/assets';
 import { getBackend } from '@/lib/secondline/storage/backends';
+import { isLocale } from '@/lib/i18n';
 
 export const prerender = false;
 
@@ -30,6 +31,7 @@ export const PATCH: APIRoute = async ({ params, request }) => {
     wall_video_max_ms?: number; wall_video_full?: boolean;
     wall_hide_bg?: boolean; wall_hide_qr?: boolean; wall_hide_caption?: boolean;
     wall_transition?: string;
+    language?: string | null;
   } = {};
   try { body = await request.json(); } catch { return json(400, { error: 'Bad JSON' }); }
 
@@ -80,6 +82,11 @@ export const PATCH: APIRoute = async ({ params, request }) => {
     const v = body.pictime_gallery_url ? String(body.pictime_gallery_url).trim() : null;
     if (v && !/^https?:\/\//i.test(v)) return json(400, { error: 'URL must start with http(s)://' });
     setPicTimeUrl(event.id, v);
+  }
+  if ('language' in body) {
+    const v = body.language;
+    if (v != null && v !== '' && !isLocale(v)) return json(400, { error: 'language must be en, es, or empty' });
+    setLanguage(event.id, isLocale(v) ? v : null);
   }
 
   return json(200, { ok: true });

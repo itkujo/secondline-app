@@ -6,14 +6,20 @@
  * git SHA the running container was built from — proves to operators which
  * version they're hitting after a deploy).
  */
+import LangToggle from '@/components/secondline/LangToggle.astro';
+import { getMessages } from '@/lib/i18n';
+
 export interface Props {
   title?: string;
   section?: 'events' | 'login';
 }
 const { title = 'Admin', section } = Astro.props;
 
+const locale = Astro.locals.locale;
+const t = getMessages(locale).admin;
+
 const NAV = [
-  { key: 'events', label: 'Events', href: '/admin/events' },
+  { key: 'events', label: t.navEvents, href: '/admin/events' },
 ] as const;
 
 const buildSha = (import.meta.env.PUBLIC_GIT_SHA as string | undefined)?.slice(0, 7) || 'dev';
@@ -60,10 +66,11 @@ const buildSha = (import.meta.env.PUBLIC_GIT_SHA as string | undefined)?.slice(0
           ))}
         </nav>
       )}
-      <span class="build-pill" title="Build SHA">{buildSha}</span>
+      <span class="build-pill" title={t.buildTitle}>{buildSha}</span>
+      <LangToggle locale={locale} />
       {section !== 'login' && (
         <form method="POST" action="/api/admin/logout" style="margin:0;">
-          <button type="submit" class="logout-btn">Log out</button>
+          <button type="submit" class="logout-btn">{t.logout}</button>
         </form>
       )}
     </header>

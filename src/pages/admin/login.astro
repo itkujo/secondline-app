@@ -7,6 +7,7 @@
  */
 import AdminLayout from '@/layouts/AdminLayout.astro';
 import { isAuthed } from '@/lib/auth';
+import { getMessages } from '@/lib/i18n';
 
 export const prerender = false;
 
@@ -15,27 +16,28 @@ if (isAuthed(Astro.request)) {
   return Astro.redirect('/admin/events');
 }
 
+const t = getMessages(Astro.locals.locale).admin;
 const next = Astro.url.searchParams.get('next') || '/admin/events';
 const error = Astro.url.searchParams.get('error') === '1';
 const tooMany = Astro.url.searchParams.get('error') === 'rate';
 ---
-<AdminLayout title="Sign in" section="login">
+<AdminLayout title={t.signInTitle} section="login">
   <div style="max-width:420px;margin:48px auto 0;">
-    <h1>Sign in</h1>
-    <p style="color:#b8b2a5;margin:0 0 24px;">Single-password admin.</p>
+    <h1>{t.signInTitle}</h1>
+    <p style="color:#b8b2a5;margin:0 0 24px;">{t.signInSub}</p>
     {error && (
       <div style="background:rgba(160,80,80,0.12);border:1px solid rgba(160,80,80,0.3);color:#d08989;padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:14px;">
-        Wrong password.
+        {t.wrongPassword}
       </div>
     )}
     {tooMany && (
       <div style="background:rgba(160,80,80,0.12);border:1px solid rgba(160,80,80,0.3);color:#d08989;padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:14px;">
-        Too many attempts. Try again in 5 minutes.
+        {t.tooManyAttempts}
       </div>
     )}
     <form method="POST" action="/api/admin/login">
       <input type="hidden" name="next" value={next} />
-      <label style="display:block;font-size:13px;color:#b8b2a5;margin-bottom:6px;">Password</label>
+      <label style="display:block;font-size:13px;color:#b8b2a5;margin-bottom:6px;">{t.passwordLabel}</label>
       <input
         type="password"
         name="password"
@@ -44,7 +46,7 @@ const tooMany = Astro.url.searchParams.get('error') === 'rate';
         required
         style="display:block;width:100%;box-sizing:border-box;padding:10px 12px;background:#111;color:#f8f4ea;border:1px solid #2a2a2a;border-radius:8px;font-size:16px;" />
       <button type="submit" style="margin-top:16px;background:#d4af37;color:#050505;border:0;padding:11px 22px;border-radius:999px;font-weight:600;cursor:pointer;font-size:14px;">
-        Sign in
+        {t.signIn}
       </button>
     </form>
   </div>
