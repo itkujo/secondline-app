@@ -24,10 +24,23 @@ const m = getMessages(locale).common;
 
 <script>
   // Keep the cookie name in sync with LOCALE_COOKIE in @/lib/i18n.
+  const REFOCUS_KEY = 'sl-lang-refocus';
+
+  // Switching language reloads the page, which would otherwise drop keyboard
+  // focus to the top. If we just came back from a switch, restore focus to the
+  // (now-active) toggle button so keyboard users keep their place.
+  try {
+    if (sessionStorage.getItem(REFOCUS_KEY)) {
+      sessionStorage.removeItem(REFOCUS_KEY);
+      document.querySelector<HTMLButtonElement>('.sl-lang-toggle button.active')?.focus();
+    }
+  } catch { /* sessionStorage unavailable (e.g. private mode) — focus restore is best-effort */ }
+
   document.querySelectorAll<HTMLButtonElement>('.sl-lang-toggle button').forEach((btn) => {
     btn.addEventListener('click', () => {
       const lang = btn.dataset.slLang;
       if (!lang || btn.classList.contains('active')) return;
+      try { sessionStorage.setItem(REFOCUS_KEY, '1'); } catch { /* best-effort */ }
       document.cookie = `sl_lang=${lang}; path=/; max-age=31536000; samesite=lax`;
       location.reload();
     });
@@ -42,13 +55,15 @@ const m = getMessages(locale).common;
     padding: 2px;
     border: 1px solid rgba(212, 175, 55, 0.35);
     border-radius: 999px;
-    background: rgba(0, 0, 0, 0.35);
+    /* Opaque so inactive-button text contrast (AA) holds regardless of
+       whatever the toggle is layered over. */
+    background: #0d0d0d;
   }
   .sl-lang-toggle button {
     appearance: none;
     border: 0;
     background: transparent;
-    color: #b8b2a5;
+    color: #cfc7b3;
     font: inherit;
     font-size: 12px;
     font-weight: 600;
@@ -61,6 +76,10 @@ const m = getMessages(locale).common;
   }
   .sl-lang-toggle button:hover {
     color: #d4af37;
+  }
+  .sl-lang-toggle button:focus-visible {
+    outline: 2px solid #d4af37;
+    outline-offset: 2px;
   }
   .sl-lang-toggle button.active {
     background: #d4af37;
