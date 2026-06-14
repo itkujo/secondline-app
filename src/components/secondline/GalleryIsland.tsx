@@ -26,7 +26,8 @@ export default function GalleryIsland({ initialAssets, locale = 'en' }: Props) {
               onClick={() => setActive(a)}
               style={{ display: 'block', width: '100%', aspectRatio: '1 / 1', padding: 0, border: 0,
                        background: '#111', borderRadius: 6, cursor: 'zoom-in', overflow: 'hidden' }}>
-              <img src={a.thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />
+              <img src={a.thumb} alt={a.uploader_name ? t.photoBy(a.uploader_name) : t.photoAlt}
+                   style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />
             </button>
           </li>
         ))}
@@ -37,7 +38,8 @@ export default function GalleryIsland({ initialAssets, locale = 'en' }: Props) {
                       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, cursor: 'zoom-out', zIndex: 50 }}>
           {active.mime_type.startsWith('video/')
             ? <video src={active.src} controls autoPlay style={{ maxWidth: '100%', maxHeight: '100%' }} />
-            : <img src={active.src} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />}
+            : <img src={active.src} alt={active.uploader_name ? t.photoBy(active.uploader_name) : t.photoAlt}
+                   style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />}
         </div>
       )}
     </>

@@ -114,6 +114,8 @@ const en = {
     downloadZip: 'Download all as ZIP',
     buyPrints: 'Buy prints from this event →',
     noUploads: 'No uploads yet.',
+    photoBy: (name: string): string => `Photo shared by ${name}`,
+    photoAlt: 'Event photo',
   },
 
   wall: {
@@ -362,6 +364,8 @@ const es: Messages = {
     downloadZip: 'Descargar todo en ZIP',
     buyPrints: 'Compra impresiones de este evento →',
     noUploads: 'Aún no hay nada subido.',
+    photoBy: (name: string): string => `Foto compartida por ${name}`,
+    photoAlt: 'Foto del evento',
   },
 
   wall: {

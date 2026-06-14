@@ -25,7 +25,7 @@ const NAV = [
 const buildSha = (import.meta.env.PUBLIC_GIT_SHA as string | undefined)?.slice(0, 7) || 'dev';
 ---
 <!doctype html>
-<html lang="en">
+<html lang={locale}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
